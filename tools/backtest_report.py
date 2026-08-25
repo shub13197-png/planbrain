@@ -72,16 +72,16 @@ def _print(report) -> None:
     print()
     print(f"{'':22s} {'scored':>7s} {'unscored':>9s} {'mean':>7s} {'median':>7s} {'>1.0':>6s}")
     for label, block in (("chosen model", report["model"]), ("seasonal naive", report["baseline"])):
-        print(f"{label:22s} {block['n_scored']:7d} {block['n_unscored']:9d} "
-              f"{_fmt(block['mean_mase']):>7s} {_fmt(block['median_mase']):>7s} "
-              f"{block['worse_than_naive']:6d}")
+        print(f"{label:22s} {block.n_scored:7d} {block.n_unscored:9d} "
+              f"{_fmt(block.mean.value):>7s} {_fmt(block.median):>7s} "
+              f"{block.worse_than_baseline:6d}")
 
     print()
     print("by demand pattern (chosen model):")
     print(f"  {'':16s} {'scored':>7s} {'unscored':>9s} {'mean':>7s} {'median':>7s}")
     for pattern, block in report["by_pattern"].items():
-        print(f"  {pattern:16s} {block['n_scored']:7d} {block['n_unscored']:9d} "
-              f"{_fmt(block['mean_mase']):>7s} {_fmt(block['median_mase']):>7s}")
+        print(f"  {pattern:16s} {block.n_scored:7d} {block.n_unscored:9d} "
+              f"{_fmt(block.mean.value):>7s} {_fmt(block.median):>7s}")
 
     fallbacks = report["fallbacks"]
     print()

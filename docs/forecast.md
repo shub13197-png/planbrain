@@ -71,10 +71,13 @@ wrong only where it matters.
 planning. It means MASE is measuring the wrong thing.** Croston-type methods
 optimise expected inventory position over a lead time, not one-step point error.
 
-Judging them properly needs fill rate and inventory held, which is what the
-multi-echelon simulation backtest is for — replay history, measure realised
-service against stock carried. That is the honest proof-of-value report for this
-half of the portfolio, and it is **not built yet**.
+Judging them properly needs fill rate and inventory held. **That is now built**
+— see `docs/service-backtest.md`, which was promoted to build item 5 precisely
+because this metric could not settle the question.
+
+It settled it decisively. The forecast of zero that scores well on MASE for
+intermittent demand delivers **70.6% fill on intermittent and 48.1% on lumpy**.
+Accuracy was never the objective.
 
 Do not quote the intermittent MASE as evidence either way. It is reported
 because hiding a number that looks bad is worse than explaining it.

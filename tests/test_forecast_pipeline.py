@@ -180,7 +180,31 @@ def test_backtest_reports_sample_against_portfolio(seeded, demo, sample_keys):
     )
     assert report["evaluated"] == SAMPLE
     assert report["portfolio"] > SAMPLE
-    assert report["model"]["n_scored"] + report["model"]["n_unscored"] == SAMPLE
+    assert report["model"].n_scored + report["model"].n_unscored == SAMPLE
+
+
+def test_the_seasonal_period_is_derived_from_the_calendar(seeded, demo, sample_keys):
+    """Not a metrics constant. Swap the calendar and the period follows.
+
+    The demo plant closes one day a week, so the period is weekly. A continuous
+    operation has no calendar-imposed cycle and the honest baseline is one-step.
+    """
+    import dataclasses
+
+    from planbrain.working_calendar import CONTINUOUS
+
+    weekly = forecast.backtest(
+        seeded, demo, keys=sample_keys[:2], horizon=28, n_windows=1, min_train=180
+    )
+    assert weekly["seasonal_period"] == demo.calendar.seasonal_period
+
+    round_the_clock = dataclasses.replace(demo, calendar=CONTINUOUS)
+    continuous = forecast.backtest(
+        seeded, round_the_clock, keys=sample_keys[:2], horizon=28, n_windows=1,
+        min_train=180,
+    )
+    assert continuous["seasonal_period"] == 1
+    assert weekly["seasonal_period"] != continuous["seasonal_period"]
 
 
 def test_backtest_scores_against_a_real_baseline(seeded, demo, sample_keys):
@@ -188,6 +212,6 @@ def test_backtest_scores_against_a_real_baseline(seeded, demo, sample_keys):
     report = forecast.backtest(
         seeded, demo, keys=sample_keys, horizon=28, n_windows=2, min_train=180
     )
-    assert report["baseline"]["n_scored"] > 0
-    assert report["model"]["n_scored"] > 0
+    assert report["baseline"].n_scored > 0
+    assert report["model"].n_scored > 0
     assert report["by_pattern"]

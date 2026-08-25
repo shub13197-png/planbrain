@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from planbrain.facts.access import Fact
+from planbrain.working_calendar import SIX_DAY_WEEK
 
 PLANT_ID = 1
 DEPOTS = ((11, "Depot Delhi"), (12, "Depot Jaipur"), (13, "Depot Ludhiana"))
@@ -103,6 +104,9 @@ class DemoDataset:
     history_end: date
     horizon_start: date
     horizon_end: date
+    #: Reference data like parts and locations. Everything that needs a seasonal
+    #: period derives it from here rather than assuming a week.
+    calendar: object = SIX_DAY_WEEK
     facts: dict = field(default_factory=dict)
     #: Opening stock at horizon_start, keyed (sku_id, loc_id). A stock position
     #: at a single instant, not a time-phased series -- in production this comes
@@ -278,7 +282,7 @@ def _series_for(rng, pattern, span, demo, part, loc_id):
 
     for t in range(span):
         day = demo.history_start + timedelta(days=t)
-        if day.weekday() == 6:  # plant and depots closed Sunday: structural zero
+        if not SIX_DAY_WEEK.is_working(day):  # closed day: structural zero
             continue
 
         if pattern == "smooth":
@@ -398,7 +402,7 @@ def _build_capacity(rng, demo):
     for resource in demo.resources:
         for i in range(HORIZON_DAYS):
             day = demo.horizon_start + timedelta(days=i)
-            if day.weekday() == 6:
+            if not demo.calendar.is_working(day):
                 hours = 0.0
             elif day.weekday() == 5:
                 hours = 8.0

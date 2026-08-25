@@ -41,9 +41,6 @@ MODEL_FOR_PATTERN = {
     UNUSABLE: "SeasonalNaive",
 }
 
-#: Weekly. A plant with a closed day has seven-day structure whether or not
-#: anyone modelled it.
-DEFAULT_SEASON_LENGTH = 7
 
 
 class Fallbacks:
@@ -65,8 +62,7 @@ class Fallbacks:
         return {"non_finite": self.non_finite, "model_error": self.model_error}
 
 
-def make_forecaster(pattern: str, *, season_length: int = DEFAULT_SEASON_LENGTH,
-                    fallbacks: Fallbacks = None):
+def make_forecaster(pattern: str, *, season_length: int, fallbacks: Fallbacks = None):
     """Return ``(model_name, forecaster)`` for a demand pattern.
 
     The forecaster is ``(train, horizon) -> list[float]``, the same signature the

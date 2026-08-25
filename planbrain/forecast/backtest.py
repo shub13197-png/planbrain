@@ -17,7 +17,7 @@ anything if it cannot flatter itself, so:
 
 from dataclasses import dataclass, field
 
-from .metrics import DEFAULT_SEASONAL_PERIOD, UndefinedMASE, mase
+from .metrics import ScoredMean, UndefinedMASE, mase
 
 
 @dataclass(frozen=True)
@@ -35,14 +35,22 @@ class SeriesResult:
     pattern: str
     model: str
     window_scores: list = field(default_factory=list)
+    n_unscored_windows: int = 0
     unscored_reason: str = ""
 
     @property
-    def mase(self):
-        """Mean MASE across folds, or None if no fold could be scored."""
-        if not self.window_scores:
-            return None
-        return sum(self.window_scores) / len(self.window_scores)
+    def mase(self) -> ScoredMean:
+        """Mean MASE across folds, carrying the folds it could not score.
+
+        Returns a ScoredMean rather than a float on purpose: a caller cannot
+        take the number without the denominators being in the same object.
+        """
+        return ScoredMean(
+            value=(sum(self.window_scores) / len(self.window_scores))
+            if self.window_scores else None,
+            n_scored=len(self.window_scores),
+            n_unscored=self.n_unscored_windows,
+        )
 
 
 def rolling_origin_windows(n: int, *, horizon: int, n_windows: int, min_train: int) -> list:
@@ -64,7 +72,7 @@ def rolling_origin_windows(n: int, *, horizon: int, n_windows: int, min_train: i
     return windows
 
 
-def seasonal_naive(train: list, horizon: int, seasonal_period: int = DEFAULT_SEASONAL_PERIOD) -> list:
+def seasonal_naive(train: list, horizon: int, seasonal_period: int) -> list:
     """The baseline: repeat the last full season forward.
 
     Deliberately implemented here rather than pulled from a library. It is the
@@ -90,7 +98,7 @@ def backtest_series(
     horizon: int,
     n_windows: int,
     min_train: int,
-    seasonal_period: int = DEFAULT_SEASONAL_PERIOD,
+    seasonal_period: int,
 ) -> SeriesResult:
     """Score one series across every usable fold."""
     result = SeriesResult(key=key, pattern=pattern, model=model)
@@ -102,6 +110,7 @@ def backtest_series(
             f"history of {len(series)} buckets is too short for {n_windows} folds "
             f"of {horizon} at min_train {min_train}"
         )
+        result.n_unscored_windows = n_windows
         return result
 
     for window in windows:
@@ -118,7 +127,8 @@ def backtest_series(
                 mase(actual, prediction, train, seasonal_period)
             )
         except UndefinedMASE as exc:
-            # Recorded, not silently skipped: a portfolio mean that quietly
+            # Counted, not silently skipped: a portfolio mean that quietly
             # excludes its hard series is an advertisement, not a measurement.
+            result.n_unscored_windows += 1
             result.unscored_reason = str(exc)
     return result

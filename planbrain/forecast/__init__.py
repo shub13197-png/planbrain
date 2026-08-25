@@ -14,15 +14,22 @@ storage.
 from ..facts.access import Fact, read_facts, write_facts
 from .backtest import backtest_series, rolling_origin_windows, seasonal_naive
 from .classify import classify, is_intermittent
-from .metrics import UndefinedMASE, mase, naive_scale, summarise
-from .models import DEFAULT_SEASON_LENGTH, Fallbacks, MODEL_FOR_PATTERN, make_forecaster
+from .metrics import (
+    ScoredMean,
+    Summary,
+    UndefinedMASE,
+    mase,
+    naive_scale,
+    scored_mean,
+    summarise,
+)
+from .models import Fallbacks, MODEL_FOR_PATTERN, make_forecaster
 
 TABLE = "fact_supply_demand"
 SOURCE_MEASURE = "demand_actual"
 OUTPUT_MEASURE = "forecast"
 
 __all__ = [
-    "DEFAULT_SEASON_LENGTH",
     "Fallbacks",
     "MODEL_FOR_PATTERN",
     "OUTPUT_MEASURE",
@@ -35,8 +42,11 @@ __all__ = [
     "mase",
     "naive_scale",
     "read_history",
+    "ScoredMean",
+    "Summary",
     "rolling_origin_windows",
     "run",
+    "scored_mean",
     "seasonal_naive",
     "summarise",
 ]
@@ -67,14 +77,14 @@ def demand_keys(demo) -> list:
     })
 
 
-def run(con, demo, *, scenario_id: int = 0, keys=None,
-        season_length: int = DEFAULT_SEASON_LENGTH) -> dict:
+def run(con, demo, *, scenario_id: int = 0, keys=None, season_length: int = None) -> dict:
     """Fit a model per series and write the forecast measure. Returns a report.
 
     The report carries the model mix and the fallback counts, not just a row
     count -- a run where a third of the portfolio silently fell back to the
     naive baseline is a different result, and no row count would say so.
     """
+    season_length = _season_length(demo, season_length)
     keys = list(keys) if keys is not None else demand_keys(demo)
     history = read_history(
         con, scenario_id=scenario_id, keys=keys,
@@ -112,13 +122,14 @@ def run(con, demo, *, scenario_id: int = 0, keys=None,
 
 def backtest(con, demo, *, scenario_id: int = 0, keys=None, horizon: int = 28,
              n_windows: int = 3, min_train: int = 180,
-             season_length: int = DEFAULT_SEASON_LENGTH) -> dict:
+             season_length: int = None) -> dict:
     """Score the chosen models against seasonal naive on held-out history.
 
     Reports the sample size against the portfolio size. Evaluating a subset is
     fine; not saying so is not -- a MASE quoted over an unnamed sample is
     unfalsifiable.
     """
+    season_length = _season_length(demo, season_length)
     all_keys = demand_keys(demo)
     keys = list(keys) if keys is not None else all_keys
     history = read_history(
@@ -145,8 +156,10 @@ def backtest(con, demo, *, scenario_id: int = 0, keys=None, horizon: int = 28,
             horizon=horizon, n_windows=n_windows, min_train=min_train,
             seasonal_period=season_length,
         )
-        model_scores[key] = chosen.mase
-        naive_scores[key] = baseline.mase
+        # .value, not the ScoredMean itself: these feed a portfolio summarise()
+        # which recounts scored and unscored across the whole sample.
+        model_scores[key] = chosen.mase.value
+        naive_scores[key] = baseline.mase.value
         results.append(chosen)
 
     return {
@@ -167,6 +180,17 @@ def _by_pattern(results, scores) -> dict:
     for result in results:
         grouped.setdefault(result.pattern, {})[result.key] = scores[result.key]
     return {pattern: summarise(s) for pattern, s in sorted(grouped.items())}
+
+
+def _season_length(demo, override):
+    """Seasonal period from the customer's working calendar, never a constant.
+
+    An explicit override is honoured so a test can pin it, but nothing in normal
+    operation passes one -- the calendar is the source of truth.
+    """
+    if override is not None:
+        return override
+    return demo.calendar.seasonal_period
 
 
 def _tally(values) -> dict:

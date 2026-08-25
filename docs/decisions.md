@@ -641,3 +641,102 @@ poisons every downstream sum silently.
 **Why counted rather than swallowed:** a run where a third of the portfolio fell
 back to naive is a different result from one where none did, and neither the row
 count nor the MASE would say which happened.
+
+---
+
+# Build item 5 — service backtest
+
+## 2026-08-26 — Build order changed: service backtest promoted ahead of rccp
+
+**Decided.** The simulation backtest becomes item 5; `rccp` moves to 6,
+`haulplan` to 7. Recorded in `docs/build-order.md`, which is now the live plan;
+`docs/AGENT_SETUP.md` stays unedited as the historical brief.
+
+**Why:** it was the blocker on any honest claim about intermittent SKUs, which
+is roughly half the portfolio and the half where planning software earns its
+money. Item 4 had just demonstrated that MASE cannot substitute. And
+service-level against inventory is the number that sells this to a finance
+manager -- the positioning rests on it.
+
+## 2026-08-26 — Deviation: no SimPy in the replay
+
+**Decided and flagged rather than asked**, per standing instruction. The brief
+points at anshul-musing/multi-echelon-inventory-optimization, whose replay uses
+SimPy. The architectural idea -- replay history with the policy injected as the
+thing under test -- is followed exactly; the framework is not.
+
+**Why:** at a single echelon with daily buckets and deterministic lead times the
+replay is a loop over days with a pipeline dict. A discrete-event framework
+would add a runtime dependency and indirection over the one number the entire
+positioning rests on, and this has to be readable end to end without knowing a
+framework.
+
+**When SimPy earns its place:** multiple echelons with concurrent replenishment,
+stochastic lead times, or contention for a shared resource. None are in scope,
+and multi-echelon is "later if ever".
+
+## 2026-08-26 — Unmet demand is lost, not backordered
+
+**Decided.** A customer who cannot get the grade today buys it elsewhere.
+
+**Why:** it is also the conservative reading. Backorders let a late delivery
+still count as served, which flatters any policy that under-stocks. If a
+customer genuinely backorders, this is the first assumption to revisit.
+
+## 2026-08-26 — The naive-zero policy is kept as a permanent comparator
+
+**Decided.** It stays in the comparison set even though it is obviously bad.
+
+**Why:** it is the experiment, not a filler row. A forecast of zero is close to
+MASE-optimal for intermittent demand and delivers 70.6% fill on intermittent and
+48.1% on lumpy -- 4.4% at zero safety stock. That single number converts an
+abstract argument about metric choice into something a finance manager reads in
+one line. Removing it would remove the evidence.
+
+## 2026-08-26 — The frontier is the comparison, not the point
+
+**Decided.** `--sweep` traces fill rate against inventory across safety levels,
+and `docs/service-backtest.md` leads with the caveat that a single (fill, stock)
+pair is close to meaningless because any policy buys service with stock.
+
+**Reported honestly, including the uncomfortable part:** the fitted forecast is
+*competitive with* a well-tuned reorder point, not dramatically better. At 3
+days of safety it reaches 95.1% on 916 units against the incumbent's 94.1% on
+824. The clear win is lumpy demand, where it gets better service on less stock.
+
+**Rejected: tuning the reorder point down to make the forecast look better.**
+A strong incumbent is a finding to report. Making it look worse is precisely
+what this project exists not to do.
+
+## 2026-08-26 — POLICY: the seasonal period comes from the working calendar
+
+**Decided.** `planbrain/working_calendar.py` derives it: any weekly pattern with
+a closed day gives 7, a continuous operation gives 1. Nothing hardcodes a
+constant, and the tests assert the derivation by contrast rather than the
+literal.
+
+**Why:** the period is a property of the customer's calendar, not of a metrics
+module. A hardcoded 7 works until the first round-the-clock customer, and then
+it silently mis-scales every accuracy number rather than failing.
+
+**Noted:** this derives the periodicity the *calendar* forces, which is what
+configuration can know. It does not claim demand has no weekly shape when the
+plant runs continuously -- retail peaks at weekends whoever is open.
+
+## 2026-08-26 — POLICY: a mean never travels without its denominators
+
+**Decided.** `ScoredMean(value, n_scored, n_unscored)` is returned by anything
+that computes a mean. It has no `__float__`, so it cannot silently become a
+number, and `Summary` wraps it with median and extremes. `SeriesResult.mase`
+returns one instead of a bare float; so do fill rate and average on-hand in the
+service backtest.
+
+**Why structural rather than conventional:** a caller who has to *remember* to
+report the denominator will eventually forget, and a mean quoted without it is
+unfalsifiable. This is the same class as the empty-result sweep -- make the
+unsafe thing impossible rather than documented.
+
+**Extended to the service backtest:** fill rate and average on-hand are carried
+together in one `PolicyResult`, because a policy hits any fill rate by holding
+enough stock and holds almost no stock by serving nobody. Either alone is
+meaningless.
