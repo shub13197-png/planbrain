@@ -1,0 +1,23 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+
+      # Fact storage is sparse, so a direct SELECT returns a plausible wrong
+      # answer rather than an error. The database cannot enforce this; the
+      # build can.
+      - name: No direct fact-table reads
+        run: python -m tools.check_fact_access
+
+      - run: pytest -q

@@ -3,7 +3,12 @@ name = "planbrain"
 version = "0.0.0"
 description = "Supply chain planning layer on top of an existing system of record"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    # Validates every payload crossing the queue boundary. Without a validator
+    # the schema is decorative, and a malformed payload surfaces as a failed
+    # worker job minutes later instead of at the call site. MIT.
+    "jsonschema>=4.20",
+]
 
 [project.optional-dependencies]
 dev = ["pytest"]

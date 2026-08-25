@@ -1,0 +1,290 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://planbrain.dev/schema/solver_io.json",
+  "title": "Django <-> solver payload contracts",
+  "description": "Every payload crossing the queue boundary. Series are DENSE and spine-aligned: the sparse-storage rule is resolved on the Django side by planbrain.facts.access.read_facts, and a sparse array must never cross this boundary. Solvers are deterministic Python; no LLM writes any number here (CLAUDE.md architecture rule 4).",
+
+  "$defs": {
+    "horizon": {
+      "type": "object",
+      "description": "Daily buckets, both ends inclusive. Every dense_series in the payload has exactly bucket_count entries, positionally aligned to this spine.",
+      "properties": {
+        "start": {"type": "string", "format": "date"},
+        "end": {"type": "string", "format": "date"},
+        "bucket_count": {"type": "integer", "minimum": 1},
+        "bucket": {"const": "day"}
+      },
+      "required": ["start", "end", "bucket_count", "bucket"],
+      "additionalProperties": false
+    },
+
+    "dense_series": {
+      "type": "array",
+      "description": "Zero-filled, spine-aligned. Length MUST equal horizon.bucket_count -- JSON Schema cannot express that cross-field constraint, so validate_payload() enforces it. A short array is the worst bug this contract can carry: it shifts an entire series by a bucket and every downstream number stays plausible.",
+      "items": {"type": "number"}
+    },
+
+    "solve_status": {
+      "type": "string",
+      "description": "Solvers run behind a queue under a hard time limit and return best-so-far (architecture rule 3). 'timeout' carries a usable answer; 'infeasible' does not.",
+      "enum": ["optimal", "feasible", "timeout", "infeasible"]
+    },
+
+    "run_meta": {
+      "type": "object",
+      "properties": {
+        "scenario_id": {"type": "integer", "minimum": 0},
+        "status": {"$ref": "#/$defs/solve_status"},
+        "solve_seconds": {"type": "number", "minimum": 0},
+        "engine": {"type": "string", "description": "Library and version that produced this, e.g. 'stockpyl 1.0'."}
+      },
+      "required": ["scenario_id", "status", "solve_seconds", "engine"],
+      "additionalProperties": false
+    },
+
+    "netreq_input": {
+      "type": "object",
+      "description": "Time-phased MRP. gross_req is already exploded through the BOM by the caller; netreq nets, lot-sizes and offsets.",
+      "properties": {
+        "scenario_id": {"type": "integer", "minimum": 0},
+        "horizon": {"$ref": "#/$defs/horizon"},
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sku_id": {"type": "integer"},
+              "loc_id": {"type": "integer"},
+              "lead_time_days": {"type": "integer", "minimum": 0, "description": "Days, not buckets. Buckets are daily so these coincide by construction -- that is why daily grain was chosen."},
+              "on_hand": {"type": "number", "description": "Quantity at horizon.start, before any bucket is consumed."},
+              "safety_stock": {"type": "number", "minimum": 0},
+              "lot_sizing": {
+                "type": "object",
+                "properties": {
+                  "policy": {"enum": ["lot_for_lot", "fixed_qty", "min_max", "wagner_whitin"]},
+                  "fixed_qty": {"type": "number", "exclusiveMinimum": 0},
+                  "min_qty": {"type": "number", "minimum": 0},
+                  "multiple_of": {"type": "number", "exclusiveMinimum": 0}
+                },
+                "required": ["policy"],
+                "additionalProperties": false
+              },
+              "gross_req": {"$ref": "#/$defs/dense_series"},
+              "scheduled_receipt": {"$ref": "#/$defs/dense_series"}
+            },
+            "required": ["sku_id", "loc_id", "lead_time_days", "on_hand", "safety_stock", "lot_sizing", "gross_req", "scheduled_receipt"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["scenario_id", "horizon", "items"],
+      "additionalProperties": false
+    },
+
+    "netreq_output": {
+      "type": "object",
+      "properties": {
+        "meta": {"$ref": "#/$defs/run_meta"},
+        "horizon": {"$ref": "#/$defs/horizon"},
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sku_id": {"type": "integer"},
+              "loc_id": {"type": "integer"},
+              "on_hand_open": {"$ref": "#/$defs/dense_series"},
+              "net_req": {"$ref": "#/$defs/dense_series"},
+              "planned_order_receipt": {"$ref": "#/$defs/dense_series"},
+              "planned_order_release": {"$ref": "#/$defs/dense_series"}
+            },
+            "required": ["sku_id", "loc_id", "on_hand_open", "net_req", "planned_order_receipt", "planned_order_release"],
+            "additionalProperties": false
+          }
+        },
+        "exceptions": {
+          "type": "array",
+          "description": "Releases that would fall before horizon.start. These are the planner's action list, not a warning to swallow: the order is already late.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sku_id": {"type": "integer"},
+              "loc_id": {"type": "integer"},
+              "kind": {"enum": ["past_due_release", "negative_on_hand"]},
+              "bucket_index": {"type": "integer"},
+              "qty": {"type": "number"},
+              "days_late": {"type": "integer", "minimum": 0}
+            },
+            "required": ["sku_id", "loc_id", "kind", "bucket_index", "qty"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["meta", "horizon", "items", "exceptions"],
+      "additionalProperties": false
+    },
+
+    "rccp_input": {
+      "type": "object",
+      "description": "Rough-cut capacity: load the planned receipts onto resources via routings and compare with available hours. No sequencing, no finite scheduling.",
+      "properties": {
+        "scenario_id": {"type": "integer", "minimum": 0},
+        "horizon": {"$ref": "#/$defs/horizon"},
+        "resources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "resource_id": {"type": "integer"},
+              "name": {"type": "string"},
+              "capacity_avail_hours": {"$ref": "#/$defs/dense_series"}
+            },
+            "required": ["resource_id", "capacity_avail_hours"],
+            "additionalProperties": false
+          }
+        },
+        "routings": {
+          "type": "array",
+          "description": "Hours of load one unit of a SKU places on a resource.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sku_id": {"type": "integer"},
+              "resource_id": {"type": "integer"},
+              "hours_per_unit": {"type": "number", "minimum": 0},
+              "setup_hours": {"type": "number", "minimum": 0, "description": "Flat adder per bucket in which the SKU is produced. Sequence-dependent setups are PyJobShop's job, not rough-cut's."}
+            },
+            "required": ["sku_id", "resource_id", "hours_per_unit"],
+            "additionalProperties": false
+          }
+        },
+        "planned_order_receipt": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sku_id": {"type": "integer"},
+              "series": {"$ref": "#/$defs/dense_series"}
+            },
+            "required": ["sku_id", "series"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["scenario_id", "horizon", "resources", "routings", "planned_order_receipt"],
+      "additionalProperties": false
+    },
+
+    "rccp_output": {
+      "type": "object",
+      "properties": {
+        "meta": {"$ref": "#/$defs/run_meta"},
+        "horizon": {"$ref": "#/$defs/horizon"},
+        "resources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "resource_id": {"type": "integer"},
+              "capacity_load_hours": {"$ref": "#/$defs/dense_series"},
+              "utilisation": {"$ref": "#/$defs/dense_series"},
+              "overloaded_buckets": {
+                "type": "array",
+                "description": "Bucket indices where load exceeds available. Reported explicitly rather than left for the UI to recompute, so the number the planner sees and the number the report counts are the same number.",
+                "items": {"type": "integer", "minimum": 0}
+              }
+            },
+            "required": ["resource_id", "capacity_load_hours", "utilisation", "overloaded_buckets"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["meta", "horizon", "resources"],
+      "additionalProperties": false
+    },
+
+    "haulplan_input": {
+      "type": "object",
+      "description": "Truck assignment with a fairness objective. The ledger is cumulative long-haul km per truck, carried in as prior state so fairness is measured year-to-date rather than within one plan run.",
+      "properties": {
+        "scenario_id": {"type": "integer", "minimum": 0},
+        "time_limit_seconds": {"type": "number", "exclusiveMinimum": 0, "description": "Hard limit. The solver returns best-so-far when it expires (architecture rule 3)."},
+        "trucks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "truck_id": {"type": "integer"},
+              "ytd_long_haul_km": {"type": "number", "minimum": 0, "description": "Fairness ledger carried forward. Without it, every run restarts fairness from zero and the same truck is chosen every week."},
+              "capacity_kg": {"type": "number", "exclusiveMinimum": 0},
+              "available": {"type": "boolean", "default": true}
+            },
+            "required": ["truck_id", "ytd_long_haul_km", "capacity_kg"],
+            "additionalProperties": false
+          }
+        },
+        "trips": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "trip_id": {"type": "integer"},
+              "origin_id": {"type": "integer"},
+              "dest_id": {"type": "integer"},
+              "bucket_date": {"type": "string", "format": "date"},
+              "load_kg": {"type": "number", "minimum": 0},
+              "distance_km": {"type": "number", "minimum": 0, "description": "Road distance from the OSRM matrix, never straight-line."},
+              "is_long_haul": {"type": "boolean"}
+            },
+            "required": ["trip_id", "origin_id", "dest_id", "bucket_date", "load_kg", "distance_km", "is_long_haul"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["scenario_id", "time_limit_seconds", "trucks", "trips"],
+      "additionalProperties": false
+    },
+
+    "haulplan_output": {
+      "type": "object",
+      "properties": {
+        "meta": {"$ref": "#/$defs/run_meta"},
+        "assignments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "trip_id": {"type": "integer"},
+              "truck_id": {"type": ["integer", "null"], "description": "null means unassigned, which is a legitimate best-so-far result under a time limit and must be shown, not hidden."}
+            },
+            "required": ["trip_id", "truck_id"],
+            "additionalProperties": false
+          }
+        },
+        "fairness": {
+          "type": "object",
+          "description": "Reported so the planner can see what the objective actually bought, rather than trusting that it ran.",
+          "properties": {
+            "long_haul_km_after": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "truck_id": {"type": "integer"},
+                  "ytd_long_haul_km": {"type": "number", "minimum": 0}
+                },
+                "required": ["truck_id", "ytd_long_haul_km"],
+                "additionalProperties": false
+              }
+            },
+            "spread_km": {"type": "number", "minimum": 0, "description": "max minus min across trucks after assignment."}
+          },
+          "required": ["long_haul_km_after", "spread_km"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["meta", "assignments", "fairness"],
+      "additionalProperties": false
+    }
+  }
+}

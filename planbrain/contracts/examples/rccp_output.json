@@ -1,0 +1,34 @@
+{
+  "meta": {
+    "scenario_id": 0,
+    "status": "optimal",
+    "solve_seconds": 0.01,
+    "engine": "planbrain.rccp 0.1"
+  },
+  "horizon": {
+    "start": "2026-03-02",
+    "end": "2026-03-06",
+    "bucket_count": 5,
+    "bucket": "day"
+  },
+  "resources": [
+    {
+      "resource_id": 5,
+      "capacity_load_hours": [
+        11.5,
+        0.0,
+        0.0,
+        11.5,
+        0.0
+      ],
+      "utilisation": [
+        0.72,
+        0.0,
+        0.0,
+        0.72,
+        0.0
+      ],
+      "overloaded_buckets": []
+    }
+  ]
+}

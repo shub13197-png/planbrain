@@ -1,0 +1,38 @@
+{
+  "scenario_id": 0,
+  "time_limit_seconds": 30.0,
+  "trucks": [
+    {
+      "truck_id": 1,
+      "ytd_long_haul_km": 41200.0,
+      "capacity_kg": 16000.0,
+      "available": true
+    },
+    {
+      "truck_id": 2,
+      "ytd_long_haul_km": 12800.0,
+      "capacity_kg": 16000.0,
+      "available": true
+    }
+  ],
+  "trips": [
+    {
+      "trip_id": 900,
+      "origin_id": 7,
+      "dest_id": 31,
+      "bucket_date": "2026-03-02",
+      "load_kg": 14000.0,
+      "distance_km": 640.0,
+      "is_long_haul": true
+    },
+    {
+      "trip_id": 901,
+      "origin_id": 7,
+      "dest_id": 12,
+      "bucket_date": "2026-03-02",
+      "load_kg": 9000.0,
+      "distance_km": 85.0,
+      "is_long_haul": false
+    }
+  ]
+}

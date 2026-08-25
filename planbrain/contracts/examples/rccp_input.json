@@ -1,0 +1,42 @@
+{
+  "scenario_id": 0,
+  "horizon": {
+    "start": "2026-03-02",
+    "end": "2026-03-06",
+    "bucket_count": 5,
+    "bucket": "day"
+  },
+  "resources": [
+    {
+      "resource_id": 5,
+      "name": "Blender A",
+      "capacity_avail_hours": [
+        16.0,
+        16.0,
+        16.0,
+        16.0,
+        8.0
+      ]
+    }
+  ],
+  "routings": [
+    {
+      "sku_id": 101,
+      "resource_id": 5,
+      "hours_per_unit": 0.05,
+      "setup_hours": 1.5
+    }
+  ],
+  "planned_order_receipt": [
+    {
+      "sku_id": 101,
+      "series": [
+        200.0,
+        0.0,
+        0.0,
+        200.0,
+        0.0
+      ]
+    }
+  ]
+}

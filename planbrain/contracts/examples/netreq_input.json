@@ -1,0 +1,36 @@
+{
+  "scenario_id": 0,
+  "horizon": {
+    "start": "2026-03-02",
+    "end": "2026-03-06",
+    "bucket_count": 5,
+    "bucket": "day"
+  },
+  "items": [
+    {
+      "sku_id": 101,
+      "loc_id": 7,
+      "lead_time_days": 2,
+      "on_hand": 120.0,
+      "safety_stock": 50.0,
+      "lot_sizing": {
+        "policy": "fixed_qty",
+        "fixed_qty": 200.0
+      },
+      "gross_req": [
+        80.0,
+        0.0,
+        0.0,
+        150.0,
+        0.0
+      ],
+      "scheduled_receipt": [
+        0.0,
+        0.0,
+        100.0,
+        0.0,
+        0.0
+      ]
+    }
+  ]
+}
