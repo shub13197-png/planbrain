@@ -13,6 +13,12 @@ Planning facts do not share a single key. Three tables, three grains:
 | `fact_capacity` | `(resource_id, bucket_date, measure, scenario_id)` | `rccp` |
 | `fact_fleet` | `(truck_id, bucket_date, measure, scenario_id)` | `haulplan` |
 
+`fact_fleet` is **reserved with no measures at all** until `haulplan` (build
+item 6) decides what the fairness ledger measures. `read_facts` and
+`write_facts` report it as reserved rather than as a typo. An empty reservation
+is honest; a guessed vocabulary would invite something to start writing to it
+before the decision is made.
+
 They share one `measure` lookup table, which carries a `grain` column naming
 which fact table each measure belongs in. Adding a fourth grain means adding a
 table here and a line in `planbrain/facts/grains.py` — nothing else in the
@@ -59,15 +65,20 @@ matters most.
 
 A rule in a document does not prevent that. So:
 
-* **`planbrain.facts.access.read_facts` is the only read path.** It densifies
-  against a generated bucket spine and returns zeros for absent buckets. An
-  entity with no rows at all still comes back as a full run of zeros.
-* **`tools/check_fact_access.py` fails CI** on any `FROM fact_*` or
-  `JOIN fact_*` outside a short, explicit allowlist. Writes are not gated —
-  absent-means-zero is a read hazard, and the importer must still `INSERT`.
+* **`read_facts` is the only read path.** It densifies against a generated
+  bucket spine and returns zeros for absent buckets. An entity with no rows at
+  all still comes back as a full run of zeros.
+* **`write_facts` is the only write path.** Its exact mirror: it drops zeros, so
+  a zero is stored as the *absence* of a row, and it deletes any existing row at
+  that address. Without the delete, re-running an engine would leave last run's
+  non-zero value sitting where this run computed zero — and `read_facts` would
+  hand it back with a straight face.
+* **`tools/check_fact_access.py` fails CI** on any read *or* write of a fact
+  table outside a short, explicit allowlist. Its table list is derived from
+  `grains.py`, so a grain added later is covered with no edit to the checker.
 
 The allowlist may grow with storage-layer tests. It may never contain a module
-that computes a plan number; a test asserts that.
+that computes a plan number; a test asserts that boundary.
 
 ## Scenarios are flat peers
 
@@ -83,6 +94,14 @@ that computes a plan number; a test asserts that.
 * **Committing creates a frozen snapshot.** Working stays live and open, so
   plan-vs-commit drift is a plain join between two scenarios. Committing a
   pointer *at* working would make that question unanswerable.
+* **`frozen_at` is enforced by the accessor, not a trigger.** `write_facts` and
+  the bulk copy both call `assert_writable`, which refuses a frozen scenario and
+  names it and its freeze time. Accessor-level rather than a database trigger so
+  SQLite and PostgreSQL behave identically; revisit a trigger as
+  defence-in-depth if raw SQL ever enters the codebase.
+* **A scenario is frozen after its rows land**, not before. Freezing at creation
+  would make it immutable while still empty, forcing the copy to bypass the very
+  guard that makes "frozen" mean anything.
 
 Copying ~3M rows is one `INSERT ... SELECT` and a few hundred MB. Copy-on-write
 would save that and cost a recursive parent walk on every read forever —

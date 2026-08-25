@@ -19,6 +19,7 @@ See docs/decisions.md for what was rejected.
 
 from datetime import datetime, timezone
 
+from .access import assert_writable
 from .grains import FACT_TABLES
 
 
@@ -49,18 +50,31 @@ def commit_scenario(con, *, source_scenario_id: int, name: str, now=None) -> int
     stamp = _stamp(now)
     con.execute("UPDATE scenario SET status = 'archived' WHERE status = 'committed'")
     new_id = _next_scenario_id(con)
+    # Created unfrozen, then frozen once the rows have landed. Freezing first
+    # would make the scenario immutable before it had any content, and the copy
+    # would have to bypass the very guard that makes "frozen" mean something.
     con.execute(
         "INSERT INTO scenario"
-        " (scenario_id, name, created_at, frozen_at, source_scenario_id, status)"
-        " VALUES (?, ?, ?, ?, ?, 'committed')",
-        (new_id, name, stamp, stamp, source_scenario_id),
+        " (scenario_id, name, created_at, source_scenario_id, status)"
+        " VALUES (?, ?, ?, ?, 'committed')",
+        (new_id, name, stamp, source_scenario_id),
     )
     _copy_facts(con, source_scenario_id, new_id)
+    con.execute(
+        "UPDATE scenario SET frozen_at = ? WHERE scenario_id = ?", (stamp, new_id)
+    )
     return new_id
 
 
 def _copy_facts(con, source_scenario_id: int, target_scenario_id: int) -> None:
-    """Full physical copy across every fact grain."""
+    """Full physical copy across every fact grain.
+
+    Bulk INSERT...SELECT rather than a round-trip through write_facts: this
+    moves millions of rows and the source is already sparse, so there is nothing
+    for the accessor to sparsify. It shares the frozen-scenario guard, which is
+    the part that has to hold.
+    """
+    assert_writable(con, target_scenario_id)
     for table, key_cols in FACT_TABLES.items():
         cols = ", ".join((*key_cols, "bucket_date", "measure", "qty"))
         con.execute(
@@ -71,6 +85,12 @@ def _copy_facts(con, source_scenario_id: int, target_scenario_id: int) -> None:
 
 
 def _next_scenario_id(con) -> int:
+    """Next free id.
+
+    TODO(django-migration): max+1 races under concurrent PostgreSQL writers.
+    Replace with an identity column when the plugin app's migration is
+    generated -- that is the task that owns this, not a floating cleanup.
+    """
     return con.execute("SELECT max(scenario_id) + 1 FROM scenario").fetchone()[0]
 
 

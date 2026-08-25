@@ -44,7 +44,7 @@ CREATE TABLE measure (
     measure      TEXT PRIMARY KEY,
     grain        TEXT NOT NULL
                  CHECK (grain IN ('supply_demand', 'capacity', 'fleet')),
-    unit         TEXT NOT NULL,     -- 'qty' | 'hours' | 'km'
+    unit         TEXT NOT NULL,     -- 'qty' | 'hours'
     derived      INTEGER NOT NULL,  -- 0 = imported input, 1 = computed by a planning run
     description  TEXT NOT NULL
 );
@@ -59,9 +59,11 @@ INSERT INTO measure (measure, grain, unit, derived, description) VALUES
     ('planned_order_receipt', 'supply_demand', 'qty',   1, 'Lot-sized planned receipt, dated when the material is needed'),
     ('planned_order_release', 'supply_demand', 'qty',   1, 'planned_order_receipt offset backward by lead time'),
     ('capacity_avail_hours',  'capacity',      'hours', 0, 'Available hours on a resource in this bucket'),
-    ('capacity_load_hours',   'capacity',      'hours', 1, 'Hours of load placed on a resource by the plan'),
-    ('long_haul_km',          'fleet',         'km',    1, 'Long-haul kilometres assigned to a truck; the fairness ledger measure'),
-    ('total_km',              'fleet',         'km',    1, 'All kilometres assigned to a truck');
+    ('capacity_load_hours',   'capacity',      'hours', 1, 'Hours of load placed on a resource by the plan');
+-- No measure of grain 'fleet' yet, deliberately. haulplan (build item 6) defines
+-- what the fairness ledger actually measures; a guessed vocabulary would invite
+-- something to start writing to it before that decision is made. read_facts and
+-- write_facts report fact_fleet as reserved until a measure is added here.
 
 CREATE TABLE fact_supply_demand (
     sku_id       INTEGER NOT NULL,
