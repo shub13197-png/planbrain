@@ -186,3 +186,45 @@ failure mode this project cannot tolerate.
 
 **Rejected: remembering to pass `encoding="utf-8"`.** Same class of mistake as
 trusting a document to prevent an inner join.
+
+## 2026-08-25 — Demo dataset: a generator, not committed data
+
+**Decided.** `planbrain/demo` generates the whole dataset deterministically from
+a seed. `data/local/` is gitignored; the SQLite file is disposable.
+
+**Rejected: committing fixture files.** A committed CSV or JSON drifts from the
+schema silently and nobody notices until a test fails for an unrelated reason.
+A seeded generator cannot drift — it is rebuilt from the current schema every
+run, and `test_is_deterministic` pins reproducibility.
+
+## 2026-08-25 — The demo history is messy on purpose, and unlabelled
+
+**Decided.** Five demand patterns, mid-history launches and discontinuations,
+stockout windows, promotional spikes, and structural Sunday zeros.
+
+**Why:** a backtest against clean synthetic demand makes a naive mean look
+excellent and hides exactly the failure modes Croston, TSB and IMAPA exist for.
+Item 4 reports MASE; that number is only worth reading if the data can defeat a
+naive forecaster.
+
+**Decided: lifecycle events are recorded on the dataset object but never stored
+as facts.** In the fact table a structural zero, a censored-supply zero and a
+real zero-demand day are indistinguishable — as they are in a customer's data.
+
+**Rejected: labelling censored zeros in the fact table.** It would make item 4
+easier than reality and the resulting MASE would be a lie. Telling the two apart
+is the forecaster's problem, which is the whole point of the exercise.
+
+## 2026-08-25 — Demo covers a second grain from day one
+
+**Decided.** The dataset populates `fact_capacity` as well as
+`fact_supply_demand`, even though nothing reads capacity until item 5.
+
+**Why:** items 2-4 would otherwise all run against a single grain, leaving the
+multi-grain registry untested by real data for three build items — long enough
+for something to be built assuming one grain. The Sunday zeros in the capacity
+series also give a live demonstration that the sparse round trip works on a
+grain other than supply and demand.
+
+**`fact_fleet` stays empty.** The 12 trucks are reference data. Nothing writes
+to the fleet grain until `haulplan` defines the ledger.
