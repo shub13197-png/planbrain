@@ -228,3 +228,217 @@ grain other than supply and demand.
 
 **`fact_fleet` stays empty.** The 12 trucks are reference data. Nothing writes
 to the fleet grain until `haulplan` defines the ledger.
+
+---
+
+# Reconciliation, 2026-08-25
+
+Walked the commit history after discovering that the `0cb538c` turn's log update
+silently no-opped. **The four rebuilt entries were not the whole gap.** Entry
+counts by commit: `f1e899e` 5, `0cb538c` 5 (the no-op — a large commit that
+logged nothing), `045c773` 12, `6a61025` 15.
+
+Two distinct causes, and the encoding bug was only one of them:
+
+* **Inside the broken window** (`0cb538c`): entries lost to the cp1252/UTF-8
+  silent `str.replace` no-op. Rebuilt earlier, plus the four below.
+* **Predating the window** (`f1e899e`): decisions written into `facts.md` and
+  never mirrored into the log at all. That was not a tooling failure, it was me
+  treating the contract doc as the record. The log is the record; the contract
+  doc explains the result.
+
+No guard added for this. "Every decision is logged" is a judgement call, and a
+checker for it would be the assert-a-count mistake wearing a different hat.
+
+## 2026-08-25 — Planning keys are not foreign keys (recovered, f1e899e)
+
+**Decided.** `sku_id`, `loc_id`, `resource_id` and `truck_id` carry no FK
+constraint. They are logical references into InvenTree.
+
+**Why:** InvenTree core is read-only (architecture rule 1) and may live in a
+separate database, so a constraint could not be enforced anyway. Referential
+integrity against InvenTree is the importer's job, checked at import time where
+a bad row can be reported against its source line.
+
+## 2026-08-25 — qty may be negative (recovered, f1e899e)
+
+**Decided.** No non-negativity constraint on `qty`.
+
+**Rejected: clamping at zero.** `projected_on_hand` goes negative on a shortage,
+and the magnitude of the negative is the size of the problem the planner needs
+to see. Clamping would turn a visible shortage into a silent zero.
+
+## 2026-08-25 — `derived` measures are inputs vs outputs (recovered, f1e899e)
+
+**Decided.** `measure.derived = 0` means imported from the system of record and
+never written by a planning run; `derived = 1` means computed and is the only
+thing a planning run may overwrite.
+
+**Accepted gap:** not enforced at the database level. `netreq` must respect it,
+and that is now a live obligation rather than a note, since item 3 is the first
+code that writes derived measures.
+
+## 2026-08-25 — schema.sql is the contract, not the deployment tool (recovered, 0cb538c)
+
+**Decided.** One portable SQL subset that runs on SQLite for tests and
+PostgreSQL in production. Django migrations for the plugin app are generated
+*from* it.
+
+**Rejected: Django models as the source of truth.** The schema would then only
+be readable by booting Django, and the test suite could not run against
+in-memory SQLite in under a second — which is what makes the storage-layer tests
+cheap enough to actually write.
+
+**Cost accepted:** PostgreSQL-specific features (partitioning, identity columns,
+generate_series) stay out of this file until something needs them.
+
+## 2026-08-25 — Best-so-far is a first-class result (recovered, 0cb538c)
+
+**Decided.** `run_meta.status` is `optimal | feasible | timeout | infeasible`,
+and `haulplan_output` can carry `truck_id: null` for an unassigned trip.
+
+**Why:** architecture rule 3 puts solvers behind a queue under a hard time
+limit. If a timed-out solve could only be represented as an error, the caller's
+only options would be to discard a usable answer or to lie about its quality.
+Unassigned trips must surface rather than being quietly dropped.
+
+## 2026-08-25 — Solver payload conventions (recovered, 0cb538c)
+
+**Decided.** `gross_req` arrives already exploded through the BOM;
+`lead_time_days` is days rather than buckets; `rccp_output.overloaded_buckets`
+is reported rather than recomputed by the UI.
+
+**Why each:** explosion caller-side keeps the solver a pure function of its
+payload. Days and buckets coincide by construction under the daily grain, which
+is the point of that grain. Reporting overloads rather than recomputing them
+means the number the planner sees and the number a report counts are the same
+number.
+
+## 2026-08-25 — Contract examples are generated and drift-checked (recovered, 0cb538c)
+
+**Decided.** `tools/make_examples.py` generates one worked example per payload
+kind; a test asserts the files on disk match the generator.
+
+**Why:** a schema says what is legal, an example says what a real payload looks
+like — and a stale example is worse than none, because it is what someone copies.
+
+**Decided: the contract is self-contained**, no external `$ref`. Asserted by a
+test so it stays readable without network access.
+
+---
+
+# Build item 3 — netreq
+
+## 2026-08-25 — Opening on-hand is a scalar input, not a measure
+
+**Decided.** `netreq_input.on_hand` is a per-item scalar. The demo generator
+produces a `stock_on_hand` snapshot object alongside its lifecycle records, not
+fact rows.
+
+**Why:** opening on-hand is a stock position at a single instant, not a
+time-phased series, and in production it comes from InvenTree stock.
+
+**Rejected: an `on_hand` measure in the vocabulary.** It would build a fake
+source that the importer would later have to be taught to fill, and then be
+unwound when InvenTree stock became the real source.
+
+## 2026-08-25 — `on_hand_open` renamed to `projected_on_hand`, timing pinned
+
+**Decided.** One measure for the time-phased balance, named `projected_on_hand`,
+defined as the balance at bucket **end** — the projected available balance a
+planner reads off an MRP grid.
+
+**Rejected: adding `projected_on_hand` alongside `on_hand_open`.** They mean the
+same thing. Two measures for one concept is exactly the parallel-series problem
+the closed vocabulary exists to prevent.
+
+**Noted: it is a level, not a flow.** It carries across buckets, so a slow mover
+stores densely where its demand stores sparsely — the inverse of the
+intermittent case, and confirmed empirically by
+`test_a_level_stores_denser_than_a_flow`. Do not size the table from the demo's
+50%-dense demand figure. If one measure forces partitioning, it is this one.
+
+## 2026-08-25 — The forecast seam is a named adapter
+
+**Decided.** `resolve_gross_req(con, ..., source=...)`. Item 3 uses
+`naive_replay`; item 4 passes `forecast`.
+
+**Rejected: inlining the demand_actual substitution in the netting loop.** The
+swap would then be a diff through the middle of the algorithm rather than a
+parameter, and the stand-in would be easy to leave in place by accident.
+
+**Decided: `source="forecast"` raises today rather than returning zeros.**
+Nothing writes the forecast measure yet, and netting against zeros would produce
+a confident, empty plan — the exact failure mode this project exists to avoid.
+
+**Recorded loudly: `naive_replay` is not a forecast.** No model, no
+reconciliation, no error estimate. Its accuracy must never be quoted as a
+baseline for item 4.
+
+## 2026-08-25 — Wagner-Whitin implemented here; stockpyl is a test-only oracle
+
+**Decided.** The DP lives in `netreq/core.py`. `stockpyl` moves to the `dev`
+extra.
+
+**Why:** stockpyl declares `sphinx==4.5.0` — a pinned documentation toolchain —
+among its *install* requirements, along with matplotlib, build and setuptools. A
+pinned Sphinx inside an InvenTree plugin's runtime tree is a conflict waiting to
+surface at deploy time. The licence gate is satisfied (MIT), but the dependency
+shape is not.
+
+**Kept:** stockpyl as the fixture source and cross-check.
+`test_our_dp_agrees_with_stockpyls_solver` asserts exact agreement on four
+instances, and `test_shipped_package_never_imports_stockpyl` is the boundary
+assertion that stops the runtime dependency creeping back.
+
+**Decided: ties prefer the later order.** `[5]x12` at setup 90, holding 1.5 has
+two optima (4+4+4 and 6+6, both 405). Later holds less stock for the same money
+and matches stockpyl, which is what lets the cross-check assert exact equality
+rather than merely equal cost.
+
+## 2026-08-25 — Explosion runs at one production location
+
+**Decided.** Independent demand is aggregated across depots before netting, and
+the BOM explodes at the plant.
+
+**Rejected: time-phased plant-to-depot netting.** That is DRP, a separate
+problem. Doing a half version of it inside item 3 would produce plausible
+distribution numbers nobody had designed.
+
+**Decided: dependent demand follows the parent's planned order RELEASE**, not
+its receipt. Components must be present when production starts, not when it
+finishes.
+
+**Decided: low-level codes are computed and cycle-checked**, not assumed. Wrong
+level order does not crash — it plans a component against an incomplete
+requirement and silently understates the order.
+
+## 2026-08-25 — netreq enforces the derived-measure rule
+
+**Decided.** `write_plans` refuses to write any measure whose `derived` flag is
+0. Previously logged as an accepted gap; item 3 is the first code that writes
+derived measures, so it is now enforced where it can be.
+
+## 2026-08-25 — Worked examples are generated by the engine
+
+**Decided.** `netreq_output.json` is computed by running `plan_item` on
+`netreq_input.json` rather than written by hand.
+
+**Why:** the hand-written version claimed a second order of 200 and a different
+balance series. It was simply wrong, and it was the thing a reader would copy.
+Deriving it makes drift impossible rather than merely detected.
+
+## 2026-08-25 — PATTERN: prefer edit tools that fail on no-match
+
+**The problem, twice.** Scripted `str.replace` edits silently no-opped — once
+from a cp1252/UTF-8 mismatch, once from backslash escaping in a heredoc. Both
+times the script printed success and the change was not made.
+
+**The pattern:** when editing files programmatically, use a tool that errors
+when the target text is not found. A helper that returns the input unchanged on
+no-match converts a loud failure into a silent one, and silent success is the
+worst possible outcome — it is indistinguishable from work until something
+downstream contradicts it.
+
+Same shape as [assert the boundary, not the count]: the safety property is not
+"did the operation run" but "did it change what it claimed to change".

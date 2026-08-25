@@ -104,6 +104,10 @@ class DemoDataset:
     horizon_start: date
     horizon_end: date
     facts: dict = field(default_factory=dict)
+    #: Opening stock at horizon_start, keyed (sku_id, loc_id). A stock position
+    #: at a single instant, not a time-phased series -- in production this comes
+    #: from InvenTree stock, so it is deliberately NOT written as fact rows.
+    stock_on_hand: dict = field(default_factory=dict)
     launched_mid_history: list = field(default_factory=list)
     discontinued_mid_history: list = field(default_factory=list)
     stockout_windows: list = field(default_factory=list)
@@ -143,6 +147,7 @@ def build_demo(seed: int = 7) -> DemoDataset:
     demo.facts[("fact_supply_demand", "demand_actual")] = _build_demand(rng, demo)
     demo.facts[("fact_supply_demand", "scheduled_receipt")] = _build_receipts(rng, demo)
     demo.facts[("fact_capacity", "capacity_avail_hours")] = _build_capacity(rng, demo)
+    demo.stock_on_hand = _build_stock(rng, demo)
     return demo
 
 
@@ -353,6 +358,33 @@ def _build_receipts(rng, demo):
                 float(rng.choice([5000, 10000, 20000, 24000])),
             ))
     return facts
+
+
+def _build_stock(rng, demo):
+    """Opening stock at horizon_start, as a snapshot rather than fact rows.
+
+    Sized off recent demand so the netting in item 3 has something realistic to
+    consume: a few weeks of cover for most SKUs, nothing at all for some, and
+    the occasional overstock. Raw materials are held at the plant only.
+    """
+    recent = {}
+    cutoff = demo.horizon_start - timedelta(days=28)
+    for fact in demo.facts[("fact_supply_demand", "demand_actual")]:
+        if fact.bucket_date >= cutoff:
+            recent[fact.keys] = recent.get(fact.keys, 0.0) + fact.qty
+
+    stock = {}
+    for key, total in recent.items():
+        daily = total / 28.0
+        cover = rng.choice([0.0, 0.0, 7.0, 14.0, 21.0, 45.0])  # some SKUs are simply out
+        stock[key] = round(daily * cover, 1)
+
+    for part in demo.parts:
+        if part.level == "raw":
+            stock[(part.sku_id, PLANT_ID)] = float(rng.choice([0, 4000, 12000, 30000]))
+        elif part.level == "intermediate":
+            stock[(part.sku_id, PLANT_ID)] = float(rng.choice([0, 0, 500, 2000]))
+    return stock
 
 
 def _build_capacity(rng, demo):

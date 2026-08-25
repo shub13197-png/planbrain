@@ -140,7 +140,49 @@ def test_every_ref_resolves():
 
 def test_examples_on_disk_match_their_generator():
     """A schema change nobody reflected in the examples should fail the build."""
-    from tools.make_examples import EXAMPLES as SOURCE
+    from tools.make_examples import EXAMPLES as SOURCE, netreq_output
 
-    for kind, payload in SOURCE.items():
+    expected = {**SOURCE, "netreq_output": netreq_output()}
+    for kind, payload in expected.items():
         assert _example(kind) == payload, f"{kind}.json is stale; run tools.make_examples"
+
+
+def test_netreq_example_is_produced_by_the_engine():
+    """The output example is computed from the input example, not hand-written.
+
+    An earlier hand-written version claimed a second order and a different
+    balance series -- it was simply wrong, and it was the thing a reader would
+    have copied. Deriving it makes drift impossible rather than merely detected.
+    """
+    from planbrain.netreq import Item, LotSizing, plan_item
+
+    spec = _example("netreq_input")["items"][0]
+    plan = plan_item(Item(
+        sku_id=spec["sku_id"], loc_id=spec["loc_id"],
+        lead_time_days=spec["lead_time_days"], on_hand=spec["on_hand"],
+        safety_stock=spec["safety_stock"], lot_sizing=LotSizing(**spec["lot_sizing"]),
+        gross_req=spec["gross_req"], scheduled_receipt=spec["scheduled_receipt"],
+    ))
+    item = _example("netreq_output")["items"][0]
+    assert item["projected_on_hand"] == plan.projected_on_hand
+    assert item["planned_order_receipt"] == plan.planned_order_receipt
+
+
+def test_wagner_whitin_payload_requires_its_costs():
+    """The schema's if/then: a cost-trade-off policy cannot run without costs."""
+    payload = _example("netreq_input")
+    payload["items"][0]["lot_sizing"] = {"policy": "wagner_whitin"}
+    with pytest.raises(ContractError):
+        validate_payload("netreq_input", payload)
+
+    payload["items"][0]["lot_sizing"] = {
+        "policy": "wagner_whitin", "setup_cost": 500.0, "holding_cost": 2.0,
+    }
+    validate_payload("netreq_input", payload)
+
+
+def test_fixed_qty_payload_requires_a_quantity():
+    payload = _example("netreq_input")
+    payload["items"][0]["lot_sizing"] = {"policy": "fixed_qty"}
+    with pytest.raises(ContractError):
+        validate_payload("netreq_input", payload)

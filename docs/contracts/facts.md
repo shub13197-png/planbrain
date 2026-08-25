@@ -122,8 +122,29 @@ written by a planning run. `derived = 1` measures are outputs and are the only
 rows a planning run may overwrite. Not enforced at the database level yet;
 `netreq` must respect it.
 
+## Levels and flows store differently
+
+Most measures are **flows**: a quantity that happens in a bucket and is zero
+otherwise. `demand_actual`, `gross_req`, `net_req` and the planned orders are
+all flows, and for an intermittent SKU they are mostly zeros and therefore
+mostly absent rows.
+
+`projected_on_hand` is a **level**. It carries across buckets, so it is non-zero
+in almost every bucket a SKU holds stock — which for a slow mover is *every*
+bucket. That is the exact inverse of the intermittent case.
+
+Do not reason about table size from the demand density figure in
+`docs/demo.md`. At 50% dense demand, a portfolio of slow movers can produce a
+`projected_on_hand` series that is close to 100% dense, and it is written for
+every SKU at every location, not only the ones with demand. If one measure
+forces a partitioning decision, it will be this one.
+
+Timing is pinned: `projected_on_hand` is the balance at bucket **end**, after
+that bucket's requirements and receipts — the "projected available balance" a
+planner reads off an MRP grid.
+
 ## qty may be negative
 
-`on_hand_open` goes negative on a shortage. That is a real plan number and must
-not be clamped at zero — the magnitude of the negative is the size of the
+`projected_on_hand` goes negative on a shortage. That is a real plan number and
+must not be clamped at zero — the magnitude of the negative is the size of the
 problem the planner needs to see.

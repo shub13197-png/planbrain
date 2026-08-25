@@ -63,5 +63,5 @@ def test_unknown_scenario_is_rejected():
 def test_qty_may_be_negative():
     """Projected on-hand goes negative on a shortage; that is a real plan number."""
     con = _db()
-    _insert(con, (101, 7, "2026-03-02", "on_hand_open", 0, -40))
+    _insert(con, (101, 7, "2026-03-02", "projected_on_hand", 0, -40))
     assert con.execute("SELECT qty FROM fact_supply_demand").fetchone()[0] == -40

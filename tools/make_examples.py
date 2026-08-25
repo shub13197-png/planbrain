@@ -8,7 +8,12 @@ in CI, so a schema change that nobody reflected here fails the build.
 """
 
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from planbrain.netreq import Item, LotSizing, plan_item  # noqa: E402
 
 OUT = Path(__file__).resolve().parents[1] / "planbrain" / "contracts" / "examples"
 
@@ -31,35 +36,10 @@ EXAMPLES = {
             }
         ],
     },
-    "netreq_output": {
-        "meta": {
-            "scenario_id": 0,
-            "status": "optimal",
-            "solve_seconds": 0.03,
-            "engine": "planbrain.netreq 0.1",
-        },
-        "horizon": HORIZON,
-        "items": [
-            {
-                "sku_id": 101,
-                "loc_id": 7,
-                "on_hand_open": [120.0, 40.0, 40.0, 140.0, 190.0],
-                "net_req": [10.0, 0.0, 0.0, 60.0, 0.0],
-                "planned_order_receipt": [200.0, 0.0, 0.0, 200.0, 0.0],
-                "planned_order_release": [0.0, 200.0, 0.0, 0.0, 0.0],
-            }
-        ],
-        "exceptions": [
-            {
-                "sku_id": 101,
-                "loc_id": 7,
-                "kind": "past_due_release",
-                "bucket_index": 0,
-                "qty": 200.0,
-                "days_late": 2,
-            }
-        ],
-    },
+    # netreq_output is COMPUTED from netreq_input by the real engine rather than
+    # written by hand. An example that disagrees with the code is worse than no
+    # example, because it is what someone copies.
+    "netreq_output": None,
     "rccp_input": {
         "scenario_id": 0,
         "horizon": HORIZON,
@@ -142,10 +122,57 @@ EXAMPLES = {
 }
 
 
+def netreq_output() -> dict:
+    """Run the real engine on the input example so the two cannot drift apart.
+
+    A worked example that disagrees with the code is worse than no example,
+    because it is exactly what someone copies.
+    """
+    spec = EXAMPLES["netreq_input"]["items"][0]
+    plan = plan_item(Item(
+        sku_id=spec["sku_id"],
+        loc_id=spec["loc_id"],
+        lead_time_days=spec["lead_time_days"],
+        on_hand=spec["on_hand"],
+        safety_stock=spec["safety_stock"],
+        lot_sizing=LotSizing(**spec["lot_sizing"]),
+        gross_req=spec["gross_req"],
+        scheduled_receipt=spec["scheduled_receipt"],
+    ))
+    exceptions = []
+    for exc in plan.exceptions:
+        entry = {
+            "sku_id": exc.sku_id, "loc_id": exc.loc_id, "kind": exc.kind,
+            "bucket_index": exc.bucket_index, "qty": exc.qty,
+        }
+        if exc.kind == "past_due_release":
+            entry["days_late"] = exc.days_late
+        exceptions.append(entry)
+    return {
+        "meta": {
+            "scenario_id": 0, "status": "optimal", "solve_seconds": 0.03,
+            "engine": "planbrain.netreq 0.1",
+        },
+        "horizon": HORIZON,
+        "items": [{
+            "sku_id": plan.sku_id,
+            "loc_id": plan.loc_id,
+            "projected_on_hand": plan.projected_on_hand,
+            "net_req": plan.net_req,
+            "planned_order_receipt": plan.planned_order_receipt,
+            "planned_order_release": plan.planned_order_release,
+        }],
+        "exceptions": exceptions,
+    }
+
+
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
+    EXAMPLES["netreq_output"] = netreq_output()
     for kind, payload in EXAMPLES.items():
-        (OUT / f"{kind}.json").write_text(json.dumps(payload, indent=2) + "\n")
+        (OUT / f"{kind}.json").write_text(
+            json.dumps(payload, indent=2) + "\n", encoding="utf-8"
+        )
         print(f"wrote {kind}.json")
     return 0
 

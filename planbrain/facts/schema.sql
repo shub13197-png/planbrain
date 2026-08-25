@@ -54,7 +54,10 @@ INSERT INTO measure (measure, grain, unit, derived, description) VALUES
     ('scheduled_receipt',     'supply_demand', 'qty',   0, 'Confirmed open PO or work order due in this bucket'),
     ('forecast',              'supply_demand', 'qty',   1, 'Statistical forecast of independent demand'),
     ('gross_req',             'supply_demand', 'qty',   1, 'Total requirement: independent demand plus dependent demand from BOM explosion'),
-    ('on_hand_open',          'supply_demand', 'qty',   1, 'Projected on-hand at bucket start; negative means shortage'),
+    -- A LEVEL, not a flow: it carries across buckets, so a slow mover stores
+    -- densely where its demand stores sparsely. Balance at bucket END, after
+    -- that bucket's requirements and receipts. Negative means shortage.
+    ('projected_on_hand',     'supply_demand', 'qty',   1, 'Projected on-hand at bucket end; negative means shortage'),
     ('net_req',               'supply_demand', 'qty',   1, 'Requirement remaining after netting on-hand and scheduled receipts'),
     ('planned_order_receipt', 'supply_demand', 'qty',   1, 'Lot-sized planned receipt, dated when the material is needed'),
     ('planned_order_release', 'supply_demand', 'qty',   1, 'planned_order_receipt offset backward by lead time'),

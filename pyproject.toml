@@ -11,7 +11,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = [
+    "pytest",
+    # TEST-ONLY oracle for Wagner-Whitin. stockpyl is the locked stack's
+    # inventory library and its published instances are our textbook fixtures,
+    # but it declares sphinx==4.5.0 among its install requirements -- a pinned
+    # documentation toolchain, which has no business inside an InvenTree plugin's
+    # runtime tree. planbrain.netreq implements the DP itself and is cross-checked
+    # against stockpyl here. MIT.
+    "stockpyl>=1.0",
+]
 
 [build-system]
 requires = ["setuptools>=68"]
