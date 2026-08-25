@@ -41,10 +41,25 @@ over the whole net requirement vector. It needs `setup_cost` and `holding_cost`;
 a payload that asks for it without them is rejected rather than quietly
 degenerating to lot-for-lot.
 
-**Ties prefer the later order.** Flat demand often admits several optima —
-`[5]×12` at setup 90, holding 1.5 can be ordered 4+4+4 or 6+6 for the same 405.
-Later means less stock held for the same money, and less exposure if the
-requirement moves.
+### Stated policy: ties prefer the later order
+
+Flat demand often admits several optima — `[5]×12` at setup 90, holding 1.5 can
+be ordered 4+4+4 or 6+6 for exactly 405 either way. **When costs tie, netreq
+orders later.**
+
+This is a policy, not an implementation detail, and it is a real choice with a
+real trade:
+
+* *For later:* less stock held for the same money, less cash committed, less
+  exposure if the requirement moves. It also matches stockpyl, which is what
+  lets the cross-check assert exact equality rather than merely equal cost.
+* *Against later:* a customer running tight service levels may prefer **earlier**
+  — the stock is already there when demand arrives sooner than planned.
+
+Deliberately **not parameterised**. A knob nobody has asked for is a branch
+nobody tests and a default nobody chose. If a customer asks for prefer-earlier,
+that is the moment to add it, and the tie-break belongs in the payload contract
+at that point rather than in a config file.
 
 ### Wagner-Whitin is implemented here, not imported
 
@@ -83,11 +98,32 @@ whatever produces independent demand.
 
 Item 4 changes the source. The netting loop never learns which it got.
 
-## Two deliberate scope limits
+## KNOWN GAP: this answers one of the two distribution questions
 
-**Single production location.** Explosion runs at the plant, and independent
-demand is aggregated across depots before netting. Time-phased distribution
-between plant and depot is DRP — a different problem, not part of item 3.
+Explosion runs at the plant. Independent demand is **reconciled bottom-up**
+across depots before netting — item 4 forecasts per depot, sums to plant level,
+and explosion consumes the plant total.
+
+That answers:
+
+> **What must the plant make, and when?**
+
+It does **not** answer:
+
+> **What must each depot hold, and when should it ship?**
+
+Aggregating depot demand to the plant discards the per-depot lead-time offset.
+A depot four days from the plant and a depot next door are summed into the same
+bucket, so the plant total is right while the timing of each depot's replenishment
+is simply absent. Answering the second question is DRP — time-phased
+distribution requirements planning — and it is **deferred, not solved**.
+
+This matters because a plant plan that looks complete invites someone to read
+depot answers out of it. There are none in here. If a planner asks "when do I
+ship to Ludhiana", the honest answer today is that Planning Brain does not know.
+
+Deliberately not half-built: a partial DRP would produce plausible per-depot
+numbers nobody had designed, which is worse than an absent feature.
 
 **`derived = 0` measures are never written.** `write_plans` refuses any measure
 the vocabulary marks as imported. The database does not enforce that flag, so

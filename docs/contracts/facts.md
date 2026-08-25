@@ -134,14 +134,40 @@ in almost every bucket a SKU holds stock — which for a slow mover is *every*
 bucket. That is the exact inverse of the intermittent case.
 
 Do not reason about table size from the demand density figure in
-`docs/demo.md`. At 50% dense demand, a portfolio of slow movers can produce a
-`projected_on_hand` series that is close to 100% dense, and it is written for
-every SKU at every location, not only the ones with demand. If one measure
-forces a partitioning decision, it will be this one.
+`docs/demo.md`. Measured on the demo at 200 SKUs × 90 buckets:
+
+| measure | rows | dense |
+|---|---|---|
+| `projected_on_hand` | 13,998 | **78%** |
+| `gross_req` | 12,902 | 72% |
+| `net_req`, `planned_order_receipt` | 5,874 | 33% |
+| `planned_order_release` | 5,750 | 32% |
+
+`projected_on_hand` is 2.4× the rows of a planned-order series and is written
+for every SKU whether or not it has demand. If one measure forces a partitioning
+decision, it will be this one.
 
 Timing is pinned: `projected_on_hand` is the balance at bucket **end**, after
 that bucket's requirements and receipts — the "projected available balance" a
 planner reads off an MRP grid.
+
+### Dense or not stored. There is no middle.
+
+The natural compression for a level is to **store only on change and carry the
+last value forward on read**. That is forbidden here, permanently, and not as a
+performance judgement.
+
+It would make an absent row mean *carry forward the previous value* for this one
+measure and *zero* for every other measure in the same table. Two meanings for
+absence in one table is precisely the failure the sparse rule exists to prevent
+— and the resulting bug is the worst-shaped kind: a query that reads a
+carry-forward measure with zero-fill semantics returns a full, plausible series
+that is simply wrong.
+
+When density genuinely hurts, the answer is **partitioning by
+`(scenario_id, bucket_date)`**, which changes storage layout without touching
+what a row means. Not needed yet: ~110k rows on a 546-day horizon at 200 SKUs is
+nothing. Revisit when a real dataset makes it hurt.
 
 ## qty may be negative
 

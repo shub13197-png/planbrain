@@ -25,6 +25,18 @@ def _example(kind):
     return json.loads((EXAMPLES / f"{kind}.json").read_text())
 
 
+def test_the_contract_declares_payload_kinds_at_all():
+    """Guards every parametrised test below.
+
+    payload_kinds() feeds @parametrize. If it ever returned empty -- a renamed
+    suffix, a failed load -- pytest would collect zero cases and the whole
+    contract suite would report green while testing nothing.
+    """
+    kinds = payload_kinds()
+    assert len(kinds) >= 6, f"only {len(kinds)} payload kinds found: {kinds}"
+    assert "netreq_input" in kinds
+
+
 def test_every_payload_kind_has_a_worked_example():
     """A schema says what is legal; an example says what a real payload looks like."""
     missing = [k for k in payload_kinds() if not (EXAMPLES / f"{k}.json").exists()]

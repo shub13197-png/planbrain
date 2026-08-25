@@ -442,3 +442,109 @@ downstream contradicts it.
 
 Same shape as [assert the boundary, not the count]: the safety property is not
 "did the operation run" but "did it change what it claimed to change".
+
+---
+
+# Standing policies
+
+## 2026-08-25 — POLICY: inventory math is implemented here; stockpyl is the oracle
+
+**Standing decision, not to be relitigated per algorithm.** Any inventory
+mathematics we would otherwise take from stockpyl -- safety stock, EOQ,
+base-stock levels, multi-echelon inventory optimisation -- follows the same
+pattern established for Wagner-Whitin:
+
+1. Implement it in `planbrain`, with the algorithm and its source named in the
+   docstring.
+2. Keep `stockpyl` in the `dev` extra only.
+3. Cross-check against stockpyl in tests and **assert exact agreement**, not
+   merely equal cost. Where ties are possible, pick the tie-break that matches
+   stockpyl so exact equality stays assertable, and document the choice as a
+   policy.
+4. Keep a boundary test that the shipped package never imports it.
+
+**Why it is standing:** stockpyl declares `sphinx==4.5.0` -- a pinned
+documentation toolchain -- among its *install* requirements, along with
+matplotlib, build and setuptools. That is a property of the package, not of any
+one algorithm, so the answer is the same every time and re-deciding it per
+function is wasted argument.
+
+**This does not generalise to the rest of the stack.** statsforecast, Timefold
+and PyVROOM are judged on their own dependency shape. Re-implementing an
+AutoARIMA would be absurd where re-implementing a twenty-line dynamic program is
+not.
+
+## 2026-08-25 — POLICY: Wagner-Whitin ties prefer the later order
+
+**Decided.** Documented in `docs/netreq.md` as a stated policy with its
+rationale, not as an implementation detail.
+
+Later holds less stock for the same money and matches stockpyl, which is what
+lets the cross-check assert exact equality. A customer running tight service
+levels may eventually want prefer-earlier.
+
+**Rejected: parameterising it now.** A knob nobody has asked for is a branch
+nobody tests and a default nobody chose. When someone asks, it belongs in the
+payload contract rather than a config file.
+
+## 2026-08-25 — projected_on_hand stays dense. Compression is forbidden, not deferred.
+
+**Decided.** Store every bucket. No optimisation now: ~110k rows on a 546-day
+horizon at 200 SKUs is nothing.
+
+**Forbidden permanently: store-on-change with carry-forward on read.** This is
+the natural compression for a level and it must never be adopted. It would make
+an absent row mean *carry forward* for this measure and *zero* for every other
+measure in the same table. Two meanings for absence in one table is exactly the
+failure the sparse rule exists to prevent, and the resulting bug is the worst
+shape available: a reader using zero-fill semantics gets a complete, plausible,
+wrong series.
+
+**When density does hurt: partition by `(scenario_id, bucket_date)`.** That
+changes storage layout without changing what a row means. Dense or not stored;
+no middle.
+
+## 2026-08-25 — Depot demand is reconciled bottom-up before netting
+
+**Decided.** Item 4 forecasts per depot and sums to plant level; explosion
+consumes the plant total.
+
+**KNOWN GAP, written into `docs/netreq.md` so it is not mistaken for solved:**
+aggregating depot demand to the plant discards the per-depot lead-time offset. A
+depot four days out and a depot next door land in the same bucket. So the
+current plan answers *"what must the plant make, and when"* and does **not**
+answer *"what must each depot hold, and when should it ship"*. The second
+question needs DRP and is deferred.
+
+**Rejected: a partial DRP inside item 3 or 4.** It would produce plausible
+per-depot numbers nobody had designed, which is worse than an absent feature. A
+plant plan that looks complete invites someone to read depot answers out of it;
+the documentation says plainly that there are none.
+
+## 2026-08-25 — PATTERN: an empty result must not read as success
+
+Generalised from two silent `str.replace` no-ops. The class is broader than
+editing: **any operation whose no-op outcome is indistinguishable from its
+success outcome.**
+
+Swept the repo for the whole class and guarded each instance:
+
+| Site | Empty outcome | Guard |
+|---|---|---|
+| `validate_payload` horizon lookup | `.get()` returned None, **skipping the series-length check entirely** | required-field check, then indexed access |
+| `check_fact_access.main` | glob finds no files, gate prints clean | floor on files examined |
+| `test_encoding` parametrize | zero files, zero tests, green | assert the collected list is non-empty |
+| stockpyl boundary test | zero modules scanned | assert modules scanned |
+| `test_registry_matches_the_schema` | regex matches nothing | assert parsed result non-empty |
+| `make_examples` | wrote the literal `null` | refuse to write an empty payload |
+| `payload_kinds()` | zero kinds, whole contract suite collects nothing | assert kind count |
+
+The first one is the worst and was found by the sweep rather than by a failure:
+a guard that silently disables itself is worse than no guard, because the
+payload then passes validation while carrying the one error the contract exists
+to catch.
+
+**Not guarded, deliberately:** `dict.get(key, default)` in `explode` and
+`read_facts`. Those defaults encode a real absence -- a SKU with no independent
+demand, a bucket with no row -- rather than masking a missing key. The
+distinction is whether absence is *meaningful* or *unexpected*.

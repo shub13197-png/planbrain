@@ -29,9 +29,12 @@ def test_shipped_package_never_imports_stockpyl():
     from pathlib import Path
 
     package = Path(__file__).resolve().parents[1] / "planbrain"
+    scanned = sorted(package.rglob("*.py"))
+    assert len(scanned) >= 5, f"only {len(scanned)} modules scanned; the gate is blind"
+
     offenders = [
         f"{path.relative_to(package.parent).as_posix()}:{lineno}"
-        for path in package.rglob("*.py")
+        for path in scanned
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
         if line.strip().startswith(("import stockpyl", "from stockpyl"))
     ]

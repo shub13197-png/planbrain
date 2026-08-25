@@ -25,7 +25,17 @@ def _text_files():
         yield path
 
 
-@pytest.mark.parametrize("path", sorted(_text_files()), ids=lambda p: p.name)
+#: Collected once at import. An empty list would produce zero parametrised
+#: tests, and zero tests report as a pass -- so the count is asserted separately.
+TEXT_FILES = sorted(_text_files())
+
+
+def test_the_scan_actually_found_files():
+    """A gate that examined nothing is indistinguishable from a gate that passed."""
+    assert len(TEXT_FILES) >= 10, f"only {len(TEXT_FILES)} text files found under {ROOT}"
+
+
+@pytest.mark.parametrize("path", TEXT_FILES, ids=lambda p: p.name)
 def test_file_is_valid_utf8(path):
     try:
         path.read_bytes().decode("utf-8")

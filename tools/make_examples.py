@@ -169,6 +169,15 @@ def netreq_output() -> dict:
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     EXAMPLES["netreq_output"] = netreq_output()
+
+    # This exact placeholder once survived to disk as the literal `null`, because
+    # the code meant to replace it had silently failed to apply. A codegen step
+    # that writes a valid file containing nothing is the worst outcome: it looks
+    # like it worked.
+    empty = [kind for kind, payload in EXAMPLES.items() if not payload]
+    if empty:
+        raise SystemExit(f"refusing to write empty example(s): {', '.join(empty)}")
+
     for kind, payload in EXAMPLES.items():
         (OUT / f"{kind}.json").write_text(
             json.dumps(payload, indent=2) + "\n", encoding="utf-8"

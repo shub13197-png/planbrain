@@ -56,14 +56,52 @@ def validate_payload(kind: str, payload: dict) -> None:
         where = "/".join(str(p) for p in first.absolute_path) or "<root>"
         raise ContractError(f"{kind} invalid at {where}: {first.message}")
 
-    bucket_count = payload.get("horizon", {}).get("bucket_count")
-    if bucket_count is not None:
+    # Indexed, not .get() with a default. A missing horizon used to make
+    # bucket_count None, which skipped the series-length check entirely -- a
+    # guard that silently disables itself is worse than no guard, because the
+    # payload then passes validation while carrying the one error this contract
+    # exists to catch. Schema validation above already required the field for
+    # every kind that declares it, so a KeyError here means the schema and this
+    # function disagree, which is a bug worth raising loudly.
+    if "horizon" in doc["$defs"][kind].get("required", ()):
+        bucket_count = payload["horizon"]["bucket_count"]
         problems = _series_length_problems(doc["$defs"][kind], payload, doc, bucket_count, "")
         if problems:
             raise ContractError(
                 f"{kind}: dense series must be exactly {bucket_count} buckets long. "
                 + "; ".join(problems)
             )
+    elif _has_dense_series(doc["$defs"][kind], doc):
+        raise ContractError(
+            f"{kind} carries dense series but does not require a horizon; "
+            f"their length could not be checked against anything"
+        )
+
+
+def _has_dense_series(node, doc, seen=None) -> bool:
+    """Whether any dense series hides under this schema node.
+
+    Used to catch the combination that would leave series lengths unchecked:
+    a payload kind that carries series but declares no horizon to measure them
+    against. Today only the haulplan payloads have no horizon, and they have no
+    series either -- this makes that stay true.
+    """
+    if not isinstance(node, dict):
+        return False
+    seen = seen if seen is not None else set()
+    ref = node.get("$ref")
+    if ref == DENSE_SERIES_REF:
+        return True
+    if ref:
+        if ref in seen:
+            return False
+        seen.add(ref)
+        return _has_dense_series(_resolve(doc, ref), doc, seen)
+    return any(
+        _has_dense_series(child, doc, seen)
+        for key in ("properties", "$defs")
+        for child in node.get(key, {}).values()
+    ) or _has_dense_series(node.get("items"), doc, seen)
 
 
 def _series_length_problems(node, data, doc, bucket_count, path) -> list[str]:

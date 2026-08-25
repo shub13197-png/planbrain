@@ -119,4 +119,5 @@ def test_registry_matches_the_schema():
         # Grain keys are every column before the shared bucket_date tail.
         declared[match.group(1)] = tuple(cols[: cols.index("bucket_date")])
 
+    assert declared, "no CREATE TABLE fact_* matched; the parser, not the schema, is broken"
     assert declared == FACT_TABLES

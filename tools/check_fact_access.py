@@ -41,6 +41,12 @@ ALLOWED = {
 #: Only the facts package itself may be allowlisted under planbrain/.
 EXEMPT_PACKAGE_PREFIX = "planbrain/facts/"
 
+#: Floor on how many files the repo scan must see. Guards against the gate
+#: reporting "clean" because it looked at nothing. Deliberately far below the
+#: real count so it never needs adjusting for ordinary growth -- it is a
+#: liveness check, not a size assertion.
+MIN_FILES_EXPECTED = 10
+
 _TABLES = "|".join(sorted(FACT_TABLES))
 
 #: Reads and writes are both gated. Ordered so that DELETE FROM is reported as a
@@ -77,7 +83,21 @@ def scan(root: Path) -> list[str]:
 
 
 def main() -> int:
-    violations = scan(Path(__file__).resolve().parents[1])
+    root = Path(__file__).resolve().parents[1]
+
+    # A gate that examined nothing reports "clean" and is indistinguishable from
+    # a gate that passed. If the glob ever comes back empty -- wrong working
+    # directory, a packaging change, a rename -- fail loudly instead.
+    examined = sum(1 for _ in root.rglob("*.py"))
+    if examined < MIN_FILES_EXPECTED:
+        print(
+            f"only {examined} Python files found under {root}; expected at least "
+            f"{MIN_FILES_EXPECTED}. The gate is not looking at the codebase.",
+            file=sys.stderr,
+        )
+        return 1
+
+    violations = scan(root)
     for v in violations:
         print(v, file=sys.stderr)
     if violations:
