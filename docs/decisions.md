@@ -548,3 +548,96 @@ to catch.
 `read_facts`. Those defaults encode a real absence -- a SKU with no independent
 demand, a bucket with no row -- rather than masking a missing key. The
 distinction is whether absence is *meaningful* or *unexpected*.
+
+---
+
+# Build item 4 — forecast
+
+## 2026-08-26 — New dependency: statsforecast (runtime)
+
+**Decided.** `statsforecast` 2.x is a real runtime dependency, unlike stockpyl.
+
+**Justification** against the standing policy: the policy says stockpyl's
+dependency *shape* is the problem, and that other libraries are judged on their
+own. statsforecast is Apache-2.0 and requires ordinary scientific Python --
+numpy, pandas, scipy, statsmodels, coreforecast -- with no pinned toolchain.
+And an AutoARIMA or AutoETS is genuinely not reimplementable in twenty lines the
+way a Wagner-Whitin DP is. Both halves of the policy point the same way here.
+
+**Kept pure anyway:** `metrics`, `classify` and `backtest` do not import it, so
+the parts where a silent wrong answer would hide run in 0.1s without it.
+
+## 2026-08-26 — MASE seasonal period is 7, not 1
+
+**Decided.** The naive baseline is seasonal at m=7.
+
+**Why:** the plant is closed on Sunday, so daily demand has structural weekly
+periodicity. A one-step naive baseline is wrong every Saturday-to-Sunday and
+Sunday-to-Monday step, which inflates the MASE denominator and flatters every
+model that beats it. Demonstrated by
+`test_the_same_series_looks_scorable_at_the_wrong_period`.
+
+**Decided: unscorable series are counted, not dropped.** A perfectly periodic
+training window has a zero scale factor and MASE has no meaning. Those series
+are reported as unscored. Excluding the hard ones silently is how a portfolio
+average gets improved, and a mean quoted without its unscored count is an
+advertisement rather than a measurement.
+
+## 2026-08-26 — MASE is the wrong metric for intermittent demand, and we say so
+
+**Measured at seed 7 over 40 series:** chosen model mean MASE 1.066, median
+0.908, against seasonal naive 1.205 / 1.060. By pattern, erratic 0.765 and
+smooth 0.826 beat the baseline; intermittent 1.338 and lumpy 1.389 do not.
+
+**Decided: report it, caveat it, do not hide it or tune around it.** Croston and
+TSB emit a flat rate against an actual that is mostly zero, so point-error
+metrics punish them while a naive zero scores well by being right on the quiet
+days. A MASE above 1.0 there does not mean the method is worse for planning; it
+means MASE is measuring the wrong thing. Croston-type methods optimise expected
+inventory position over a lead time.
+
+**Rejected: switching intermittent SKUs to a model that scores better on MASE.**
+That would optimise the metric rather than the plan, and the metric is known to
+be wrong for this class.
+
+**Consequence, logged as an open gap:** the honest proof-of-value for the
+intermittent half of the portfolio is fill rate against inventory held, which
+needs the multi-echelon simulation backtest named in the setup brief. **Not
+built.** Until it is, no claim should be made either way about intermittent
+performance.
+
+## 2026-08-26 — Forecasts are stored at the grain they were fitted at
+
+**Decided.** `forecast` facts are written per (sku, depot). Bottom-up
+reconciliation to plant level happens in `netreq.resolve_gross_req` at the
+moment of netting.
+
+**Rejected: storing the reconciled plant-level series.** Aggregation would then
+be baked into storage and invisible at the point of use, and the depot-level
+forecast -- the thing a future DRP needs -- would be gone.
+
+## 2026-08-26 — An empty forecast measure raises rather than netting to zero
+
+**Decided.** `resolve_gross_req(source="forecast")` raises when every series is
+zero for the horizon.
+
+**Why:** all-zero means nobody ran the forecast, not that demand is nil. The
+distinction is invisible downstream, and netting against it yields a confident,
+empty plan. This is the same class as the sweep entry above -- an empty result
+that would otherwise read as a valid answer.
+
+## 2026-08-26 — Model output is clamped and NaN-guarded
+
+**Decided.** Every forecast is clamped at zero, and non-finite output falls back
+to the naive baseline with the substitution counted in the run report.
+
+**Why clamping:** ETS extrapolates freely and predicts negative demand on a
+declining series. A negative gross requirement nets backwards through MRP and
+manufactures supply out of nothing.
+
+**Why the NaN guard:** `qty` has no NOT-NaN constraint and never will. One NaN
+poisons every downstream sum silently.
+
+**Why counted rather than swallowed:** a run where a third of the portfolio fell
+back to naive is a different result from one where none did, and neither the row
+count nor the MASE would say which happened.

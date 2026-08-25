@@ -47,9 +47,16 @@ def _series(con, measure, sku_id, demo, loc_id=PLANT, scenario_id=0):
 # the seam
 # --------------------------------------------------------------------------
 
-def test_forecast_source_is_refused_until_item_four(seeded, demo):
-    """Better a loud error than silently netting against a measure nobody writes."""
-    with pytest.raises(GrossReqSourceError, match="item 4"):
+def test_forecast_source_is_refused_when_nothing_wrote_it(seeded, demo):
+    """The seam is closed as of item 4, but an empty forecast still raises.
+
+    Before item 4 this refused because the source was unimplemented. Now it
+    refuses because every series is zero, which means nobody ran the forecast
+    rather than that demand is nil. Same principle either way: better a loud
+    error than a confident, empty plan. Round-tripping a real forecast through
+    this source is covered in test_forecast_pipeline.py.
+    """
+    with pytest.raises(GrossReqSourceError, match="run planbrain.forecast"):
         resolve_gross_req(
             seeded, scenario_id=0,
             sku_ids=[p.sku_id for p in demo.parts],

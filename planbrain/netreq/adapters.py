@@ -22,8 +22,19 @@ OUTPUT_MEASURES = (
 )
 
 
+#: Where independent demand comes from. The netting loop never learns which it
+#: got -- swapping the source is a parameter, not a diff through the algorithm.
+SOURCES = {
+    #: Item 3 placeholder: the trailing window of actuals shifted forward. No
+    #: model, no reconciliation, no error estimate. Never quote its accuracy.
+    "naive_replay",
+    #: Item 4: fitted per depot by planbrain.forecast, reconciled bottom-up here.
+    "forecast",
+}
+
+
 class GrossReqSourceError(ValueError):
-    """The requested independent-demand source is not available yet."""
+    """The requested independent-demand source is unusable."""
 
 
 def resolve_gross_req(
@@ -51,22 +62,26 @@ def resolve_gross_req(
     Demand is aggregated across locations, because explosion runs at a single
     production location -- see explode() for why.
     """
-    if source == "forecast":
+    if source not in SOURCES:
         raise GrossReqSourceError(
-            "the 'forecast' source lands in build item 4; nothing writes the "
-            "forecast measure yet, so this would silently net against zeros"
+            f"unknown gross requirement source {source!r}; expected one of {sorted(SOURCES)}"
         )
-    if source != "naive_replay":
-        raise GrossReqSourceError(f"unknown gross requirement source {source!r}")
 
     spine = bucket_spine(horizon_start, horizon_end)
-    window_end = horizon_start - timedelta(days=1)
-    window_start = window_end - timedelta(days=len(spine) - 1)
-
     keys = [(sku, loc) for sku in sku_ids for loc in loc_ids]
+
+    if source == "forecast":
+        # Read at the grain the model was fitted at, then reconcile bottom-up.
+        measure, window_start, window_end = "forecast", horizon_start, horizon_end
+    else:
+        # Shift the trailing window of actuals forward by one horizon length.
+        measure = "demand_actual"
+        window_end = horizon_start - timedelta(days=1)
+        window_start = window_end - timedelta(days=len(spine) - 1)
+
     rows = read_facts(
         con, TABLE,
-        scenario_id=scenario_id, measure="demand_actual",
+        scenario_id=scenario_id, measure=measure,
         start=window_start, end=window_end, keys=keys,
     )
 
@@ -76,6 +91,15 @@ def resolve_gross_req(
         series = demand.setdefault(sku_id, [0.0] * len(spine))
         index = (row.bucket_date - window_start).days
         series[index] += row.qty
+
+    if source == "forecast" and not any(any(s) for s in demand.values()):
+        # Every series zero means the forecast measure was never written, not
+        # that demand is genuinely nil. Netting against that produces a
+        # confident, empty plan -- the failure this seam exists to prevent.
+        raise GrossReqSourceError(
+            "the forecast measure holds nothing for this horizon and scenario; "
+            "run planbrain.forecast.run() before netting against it"
+        )
     return demand
 
 

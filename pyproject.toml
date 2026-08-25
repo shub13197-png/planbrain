@@ -8,6 +8,12 @@ dependencies = [
     # the schema is decorative, and a malformed payload surfaces as a failed
     # worker job minutes later instead of at the call site. MIT.
     "jsonschema>=4.20",
+    # Statistical forecasting: AutoETS for frequent demand, Croston/TSB for
+    # intermittent. Apache-2.0, and its dependency list is ordinary scientific
+    # Python -- no pinned toolchain, unlike stockpyl. Judged on its own shape per
+    # the standing policy in docs/decisions.md. An AutoARIMA is not something to
+    # reimplement in twenty lines; a Wagner-Whitin DP is.
+    "statsforecast>=2.0",
 ]
 
 [project.optional-dependencies]
