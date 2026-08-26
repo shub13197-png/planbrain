@@ -57,6 +57,8 @@ def explode(
     scheduled_receipt: dict,
     buckets: int,
     production_loc: int,
+    working_buckets: list = None,
+    lot_sizing_override: dict = None,
 ) -> list:
     """Plan every SKU, top-down through the BOM. Returns one ItemPlan per SKU.
 
@@ -90,9 +92,10 @@ def explode(
             lead_time_days=part.lead_time_days,
             on_hand=float(on_hand.get(sku_id, 0.0)),
             safety_stock=part.safety_stock,
-            lot_sizing=_lot_sizing_for(part),
+            lot_sizing=_lot_sizing_for(part, lot_sizing_override),
             gross_req=gross,
             scheduled_receipt=scheduled_receipt.get(sku_id, zeros),
+            working_buckets=working_buckets,
         ))
         plans.append((plan, gross))
 
@@ -105,15 +108,62 @@ def explode(
     return plans
 
 
-def _lot_sizing_for(part) -> LotSizing:
+def _lot_sizing_for(part, override: dict = None) -> LotSizing:
     """Map a part's ordering rule onto a LotSizing.
 
-    Wagner-Whitin is not inferred from reference data: it needs costs the part
+    Wagner-Whitin is not inferred from the part master: it needs costs the part
     master does not carry, so a part asking for it without costs is an error
-    rather than a silent fallback to lot-for-lot.
+    rather than a silent fallback to lot-for-lot. Costs arrive through
+    ``override``, built by cost_lot_sizing() from routing data.
     """
+    if override and part.sku_id in override:
+        return override[part.sku_id]
     if part.lot_policy == "fixed_qty":
         return LotSizing(policy="fixed_qty", fixed_qty=part.lot_qty)
     if part.lot_policy == "min_max":
         return LotSizing(policy="min_max", min_qty=part.lot_qty)
     return LotSizing(policy=part.lot_policy)
+
+
+#: Annual carrying charge, applied to the capacity value embedded in a unit.
+#: A business assumption, stated rather than fitted -- and deliberately NOT
+#: chosen to make the capacity result come out feasible.
+ANNUAL_CARRYING_RATE = 0.25
+
+
+def cost_lot_sizing(routings, *, annual_carrying_rate: float = ANNUAL_CARRYING_RATE) -> dict:
+    """Wagner-Whitin parameters per SKU, priced in capacity hours.
+
+    Lot-for-lot minimises inventory and is blind to changeover: it makes a blend
+    on every day it is needed, and rough-cut showed the demo paying a full setup
+    roughly every third day as a result. Trading setup against holding is what
+    the Wagner-Whitin DP in core.py already does; it only ever lacked costs.
+
+    **Hours are the currency**, which keeps the units self-consistent without
+    inventing money the customer has not given us:
+
+    * a changeover costs ``setup_hours`` of capacity;
+    * a unit held for a bucket costs the capacity embedded in it,
+      ``hours_per_unit``, times the carrying rate per bucket.
+
+    **Stated limit, and it matters.** This is *cost-based* lot sizing, not a
+    capacity constraint. It reduces load by batching and may or may not reach
+    feasibility; it cannot be steered to a per-bucket capacity limit because it
+    never sees one. Genuinely capacity-constrained lot sizing is the CLSP -- a
+    different and much harder problem, and out of scope. If the plan is still
+    infeasible after this, that is a real residual and not an oversight.
+    """
+    per_bucket_rate = annual_carrying_rate / 365.0
+    sizing = {}
+    for routing in routings:
+        if routing.setup_hours <= 0 or routing.hours_per_unit <= 0:
+            continue
+        holding = routing.hours_per_unit * per_bucket_rate
+        if holding <= 0:
+            continue
+        sizing[routing.sku_id] = LotSizing(
+            policy="wagner_whitin",
+            setup_cost=routing.setup_hours,
+            holding_cost=holding,
+        )
+    return sizing

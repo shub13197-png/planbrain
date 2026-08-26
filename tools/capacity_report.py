@@ -26,6 +26,9 @@ def main(argv=None) -> int:
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--source", default="naive_replay",
                         choices=["naive_replay", "forecast"])
+    parser.add_argument("--lot-sizing", default="as_master",
+                        choices=["as_master", "cost_based"],
+                        help="cost_based prices changeover into the lot size")
     args = parser.parse_args(argv)
 
     con = sqlite3.connect(":memory:")
@@ -34,7 +37,7 @@ def main(argv=None) -> int:
 
     demo = build_demo(seed=args.seed)
     populate(con, demo)
-    netreq.run(con, demo, source=args.source)
+    netreq.run(con, demo, source=args.source, lot_sizing=args.lot_sizing)
     report = rccp.run(con, demo)
 
     _print(report, demo, con)
@@ -44,7 +47,12 @@ def main(argv=None) -> int:
 def _print(report, demo, con) -> None:
     names = {r.resource_id: r.name for r in demo.resources}
     verdict = "FEASIBLE" if report["feasible"] else "NOT FEASIBLE"
+    total_load = sum(d["load_hours"] for d in report["resources"].values())
+    total_cap = sum(d["capacity_hours"] for d in report["resources"].values())
+    overall = f"{total_load / total_cap * 100:.0f}%" if total_cap else "-"
     print(f"Rough-cut capacity - {report['buckets']} buckets - plan is {verdict}")
+    print(f"overall load {total_load:,.0f} h against {total_cap:,.0f} h available "
+          f"({overall})")
     print()
     print(f"{'resource':26s} {'load h':>9s} {'avail h':>9s} {'util':>7s} "
           f"{'over':>6s} {'no-cap':>7s}")

@@ -881,3 +881,119 @@ same claim, and the two must not be blurred.
 **Why:** all-zero means `netreq` has not run for this horizon, not that the
 plant is idle. Reporting a comfortably empty factory is the most reassuring
 possible wrong answer. Same class as the empty-forecast guard at item 4.
+
+---
+
+# Build item 7 — balance, drift, and the capacity loop
+
+## 2026-08-26 — The sizing rule was committed before it was run
+
+**Decided.** `docs/capacity-sizing.md` was written and committed in its own
+commit (`3e0977d`) before any capacity number existed. Target utilisation 82%,
+campaign allowance 14 days, both chosen in advance.
+
+**Why the commit order matters:** a sizing rule written after seeing the result
+is indistinguishable from a rule fitted to it. The separate commit is the
+evidence that it was not.
+
+**Rejected: sizing to 100%.** A perfectly balanced demo plant is as unrealistic
+as a 3x overloaded one, and it would make capacity checking look unnecessary --
+a plant that is never tight has no use for rough-cut.
+
+**Rejected: matching the campaign allowance to what netreq actually does.**
+Lot-for-lot runs near-daily campaigns; sizing to that would be sizing from the
+plan, which is the thing the rule exists to prevent. The gap between the
+assumption and the plan is the finding.
+
+**Guarded structurally:** `test_capacity_lands_on_the_stated_target_utilisation`
+reconstructs the rule independently and asserts capacity lands on the stated
+target, so it cannot drift into "whatever made the plan feasible".
+
+## 2026-08-26 — A resource is a work centre, not a machine
+
+**Decided.** Sized hours may exceed 24 a day. Resources renamed accordingly
+("Blending, large batch" rather than "Blender A 20kL").
+
+**Why:** a rough-cut resource is a work centre which may hold parallel
+equipment. 35 hours a day is two vessels running seventeen. Which physical unit
+does which job is finite scheduling, which rough-cut deliberately does not know.
+
+## 2026-08-26 — Demand drift added, and claim 3 survives on evidence
+
+**Decided.** 35% of series carry a sustained trend, -48% to +119% across the
+history.
+
+**The pre-commitment**, written before the run: if the stale reorder point still
+held up under drift, claim 3 would be **dropped**, not softened.
+
+**Result: it did not hold up.** The tuned-versus-stale gap went from 0.8 points
+to 3.3, and bites hardest on exactly the classes this tool claims -- intermittent
+87.3% against 93.9%, lumpy 86.0% against 94.0%. Claim 3 stands, now on evidence
+rather than on plausibility.
+
+## 2026-08-26 — Releases are pulled back to the previous working bucket
+
+**Decided.** `netreq` offsets a planned release backward past any non-working
+bucket. `Item.working_buckets` carries the calendar as flags rather than dates,
+so `core` stays free of dates.
+
+**Backward, not forward:** starting later would make the receipt late, which is
+what the lead-time offset exists to prevent.
+
+**This was a real bug, not a reporting question.** At item 6 the plan scheduled
+production on twelve closed days per resource and no engine except `rccp` could
+see it. Now zero, with a test holding it there.
+
+## 2026-08-26 — Cost-based lot sizing: hours are the currency
+
+**Decided.** `cost_lot_sizing()` builds Wagner-Whitin parameters from routing
+data: a changeover costs its setup hours, a unit-bucket of holding costs the
+capacity embedded in the unit times a stated annual carrying rate of 25%.
+
+**Why hours:** it keeps the units self-consistent without inventing money the
+customer has not given us. Reuses the DP already in `netreq`, which is the
+ponytail-ladder answer -- it only ever lacked costs.
+
+**Stated limit, up front:** this is *cost-based* lot sizing, not a capacity
+constraint. It never sees a per-bucket limit and cannot be steered to one.
+
+## 2026-08-26 — Claim 2 stays where it is: the loop did not reach feasibility
+
+**Result.** Cost-based lot sizing takes the balanced plant from 127% overall
+utilisation to 75%, and overloaded buckets from 251 to 35. **Still infeasible.**
+
+The plan fits on average and not bucket by bucket, which is the exact signature
+of cost-based rather than capacity-constrained lot sizing.
+
+**Per the pre-commitment, claim 2 remains "capacity awareness" and is not
+upgraded to "capacity-feasible plans".** The bar was set in advance and the
+result did not clear it.
+
+**Out of scope, stated so the gap is not mistaken for an oversight:** genuinely
+capacity-constrained lot sizing is the CLSP, a different and much harder problem.
+
+**Guarded by a test that asserts the failure**
+(`test_cost_based_lot_sizing_does_not_reach_feasibility`), with a docstring
+saying that if it ever fails because the plan became feasible, that is a real
+result and the claim can be upgraded -- but it must not be made to pass by
+tuning.
+
+## 2026-08-26 — The capacity win is bought with 7.4x the inventory, and we say so
+
+**Found.** Cost-based lot sizing cuts capacity load 41% and raises average
+projected on-hand from 136,439 to 1,008,134 units. 216 campaigns across 160
+routed SKUs means most SKUs are made **once** in a 90-day horizon.
+
+**Diagnosis:** valuing inventory by the capacity hours embedded in it badly
+undervalues it. A litre of lubricant costs money to hold because of the material,
+not the machine-minutes. With holding nearly free against a two-hour changeover,
+the arithmetic correctly concludes "make everything once". The answer is
+economically consistent and operationally absurd.
+
+**Rejected: tuning the carrying rate until the campaigns look sensible.** That
+is fitting a parameter to a desired answer, which is the same error as sizing
+capacity to the plan. The real fix is unit costs from the system of record --
+already on the gap list as "no cost model".
+
+**Reported in full.** Publishing the 41% load reduction without the 7.4x
+inventory would be a straightforward lie.

@@ -10,10 +10,11 @@ as the historical input — where the two disagree, this file wins.
 | 3 | `netreq` — MRP explosion | done — `7339fc7` |
 | 4 | Forecast — statsforecast + MASE backtest | done — `94971d6` |
 | 5 | Service backtest — fill rate vs inventory | done — `2188fb8` |
-| **6** | **`rccp` — capacity load** | **done** |
-| 7 | `haulplan` — fairness ledger, then Timefold | not started |
-| 8 | Importer | not started |
-| 9 | UI grid | not started |
+| 6 | `rccp` — capacity load | done — `4015654` |
+| **7** | **Balance the demo, add drift, close the capacity loop** | **done** |
+| 8 | `haulplan` — fairness ledger, then Timefold | not started |
+| 9 | Importer | not started |
+| 10 | UI grid | not started |
 
 ## Change: the service backtest was promoted to item 5
 
@@ -41,3 +42,23 @@ and `haulplan` because:
   reorder point.
 * **Output is one table** — fill rate against average on-hand per demand class.
   Treated as a deliverable, not a test artifact.
+
+## Change: balancing and the capacity loop became item 7
+
+`rccp` at item 6 reported the demo plan 3x over capacity, but the demo plant had
+never been sized against its own demand — so the finding was about the generator
+rather than about the plan. Balancing had to come before anything could be
+concluded from it, and the capacity loop had to come before claim 2 could be
+tested at all.
+
+`haulplan` moved back to 8.
+
+Scope, all in one pass:
+
+* **Size the plant blind**, from demand, to a target committed in advance in
+  `docs/capacity-sizing.md`.
+* **Add demand drift**, which the item 5 stale-comparator finding needed in
+  order to mean anything.
+* **Close the capacity loop** with cost-based lot sizing, reusing the
+  Wagner-Whitin DP already in `netreq`.
+* **Fix the closed-day release bug** that `rccp` exposed at item 6.

@@ -56,6 +56,10 @@ class Item:
     lot_sizing: LotSizing
     gross_req: list
     scheduled_receipt: list
+    #: Which buckets the plant is open, aligned to the same spine. When given,
+    #: a release is pulled back to the previous working bucket. Passed as flags
+    #: rather than as a calendar so this module stays free of dates.
+    working_buckets: list = None
 
 
 @dataclass(frozen=True)
@@ -246,6 +250,12 @@ def _offset(item: Item, receipts: list):
     it is placed in bucket 0 -- release it now -- and reported as an exception
     carrying how many days late it already is. Dropping it would understate the
     plan; placing it silently would hide that the order is overdue.
+
+    A release landing on a non-working bucket is pulled **backward** to the
+    previous open one. Backward, not forward: starting later would make the
+    receipt late, which is the thing the lead-time offset exists to prevent.
+    Without this the plan schedules production on days the plant is shut, and
+    nothing upstream of rccp can see it.
     """
     n = len(receipts)
     releases = [0.0] * n
@@ -253,7 +263,7 @@ def _offset(item: Item, receipts: list):
     for t, qty in enumerate(receipts):
         if qty == 0:
             continue
-        release_at = t - item.lead_time_days
+        release_at = _previous_working(item, t - item.lead_time_days)
         if release_at < 0:
             releases[0] += qty
             exceptions.append(PlanException(
@@ -264,6 +274,19 @@ def _offset(item: Item, receipts: list):
         else:
             releases[release_at] += qty
     return releases, exceptions
+
+
+def _previous_working(item: Item, bucket: int) -> int:
+    """Step back to the last open bucket at or before ``bucket``.
+
+    Returns a negative index unchanged: that is already a past-due release and
+    the caller reports it as one.
+    """
+    if item.working_buckets is None or bucket < 0:
+        return bucket
+    while bucket >= 0 and not item.working_buckets[bucket]:
+        bucket -= 1
+    return bucket
 
 
 def _shortages(item: Item, projected: list) -> list:

@@ -22,21 +22,24 @@ question is restated as the one a finance manager actually asks:
 
 ## Results at seed 7, 40 of 242 series, 90-day holdout, 7 days safety stock
 
+Re-run at item 7 after **demand drift** was added to the generator. The earlier
+numbers, on a stationary history, are kept below for comparison.
+
 | policy | fill rate | avg on-hand | units short |
 |---|---|---|---|
-| fitted forecast | **95.7%** | 1,208 | 4,410 |
-| naive zero forecast | 78.2% | 282 | 21,483 |
-| reorder point, **tuned** | 94.1% | 824 | 11,462 |
-| reorder point, **stale** | 93.3% | 824 | 15,225 |
+| fitted forecast | **97.9%** | 1,346 | 6,674 |
+| naive zero forecast | 77.8% | 269 | 40,067 |
+| reorder point, **tuned** | 95.2% | 793 | 25,228 |
+| reorder point, **stale** | 91.9% | 786 | 36,975 |
 
 By demand pattern, fill rate / average on-hand:
 
 | policy | erratic | intermittent | lumpy | smooth |
 |---|---|---|---|---|
-| fitted forecast | 98.7% / 1,189 | 98.7% / 1,023 | **84.4% / 868** | 99.9% / 1,719 |
-| naive zero | 91.3% / 249 | 70.6% / 286 | **48.1% / 36** | 97.7% / 535 |
-| reorder point, tuned | 97.7% / 842 | 97.8% / 828 | 82.0% / 910 | 97.6% / 722 |
-| reorder point, stale | 97.2% / 830 | 95.0% / 819 | 81.3% / 900 | 98.0% / 754 |
+| fitted forecast | 98.8% / 1,297 | 95.8% / 731 | **97.1% / 1,021** | 99.2% / 1,910 |
+| naive zero | 83.3% / 151 | 66.0% / 90 | **58.0% / 106** | 95.9% / 509 |
+| reorder point, tuned | 96.9% / 671 | 93.9% / 621 | 94.0% / 1,040 | 96.3% / 725 |
+| reorder point, stale | 97.9% / 867 | 87.3% / 583 | 86.0% / 898 | 96.7% / 783 |
 
 ### Two reorder-point rows, on purpose
 
@@ -48,18 +51,30 @@ set once, possibly by someone who has since left.
 The tuned row is not the honest incumbent, because "well-tuned" presupposes
 ongoing tuning nobody is doing.
 
-**And the stale rule holds up almost as well: 93.3% against 94.1%, on identical
-stock.** The gap shows up mainly on intermittent demand (95.0% against 97.8%).
-That is reported unedited because it is a real finding, and it weakens the
-"parameters go stale" argument on this dataset.
+### Drift changed this result, and it is worth showing both
 
-**With an important caveat that cuts against us, not for us:** the demo history
-is largely *stationary*. It carries launches, discontinuations and stockouts,
-but no sustained demand drift — no SKU that quietly doubles over eighteen
-months. Staleness bites hardest under drift, so this dataset **under-tests the
-stale comparator** and is being kind to it in one direction and unkind in
-another. Adding drift to the generator is a logged gap. Until then, treat the
-narrow tuned-versus-stale gap as under-evidenced rather than as a result.
+At item 5 the demo history was stationary — launches and discontinuations, but
+no sustained trend. On that data the stale rule held up almost as well as the
+tuned one, which weakened the "parameters go stale" argument. That was reported
+at the time as under-evidenced rather than as a result, because staleness bites
+hardest under drift and the dataset had none.
+
+Item 7 added drift: 35% of series now carry a trend of −48% to +119% across the
+history. The comparison moved:
+
+| | stationary history | with drift |
+|---|---|---|
+| tuned reorder point | 94.1% | 95.2% |
+| stale reorder point | 93.3% | 91.9% |
+| **gap** | **0.8 pts** | **3.3 pts** |
+
+Staleness now costs 3.3 points of fill rate on comparable stock, and it bites
+hardest on exactly the classes this tool claims: **intermittent 87.3% against a
+tuned 93.9%, lumpy 86.0% against 94.0%.**
+
+The pre-commitment, written before the drift run, was that claim 3 would be
+**dropped** if drift changed nothing. It changed something, so the claim stands —
+and it now stands on evidence rather than on plausibility.
 
 ### The intermittent question, settled
 
@@ -148,11 +163,8 @@ resource. None are in scope, and multi-echelon is "later if ever".
 * **No cost model.** The table reports units of stock, not money. Turning
   inventory into working capital needs unit costs, which come from the customer's
   system of record.
-* **The demo history has no sustained demand drift.** Lifecycle events yes,
-  drift no. This under-tests the stale reorder point, which is the comparator
-  most likely to be flattered by it. Adding drift to the generator would make
-  the tuned-versus-stale comparison mean something.
-* **No capacity feasibility.** Every policy here can order whatever it likes.
-  A reorder point structurally cannot produce a capacity-feasible plan, and that
-  is the dimension on which this tool differs in kind rather than in degree --
-  see `rccp`, build item 6. None of these numbers reflect it yet.
+* **Every policy here can order whatever it likes.** None of these numbers
+  reflect capacity. `rccp` (item 6) shows the demo plan is infeasible even after
+  balancing, so the service figures above are what the plant would achieve *if
+  it could make the plan*. Reconciling the two is unstarted and is the largest
+  open item in the repo.

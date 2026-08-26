@@ -18,11 +18,12 @@ from .adapters import (
     write_plans,
 )
 from .core import Item, ItemPlan, LotSizing, PlanException, plan_item
-from .explode import BomCycleError, explode, low_level_codes
+from .explode import BomCycleError, cost_lot_sizing, explode, low_level_codes
 
 __all__ = [
     "BomCycleError",
     "GrossReqSourceError",
+    "cost_lot_sizing",
     "Item",
     "ItemPlan",
     "LotSizing",
@@ -38,7 +39,14 @@ __all__ = [
 ]
 
 
-def run(con, demo, *, scenario_id: int = 0, source: str = "naive_replay") -> dict:
+def _days(n):
+    from datetime import timedelta
+
+    return timedelta(days=n)
+
+
+def run(con, demo, *, scenario_id: int = 0, source: str = "naive_replay",
+        lot_sizing: str = "as_master") -> dict:
     """End-to-end netreq run against a dataset's reference data.
 
     Reads independent demand through the named adapter, explodes the BOM, and
@@ -85,6 +93,13 @@ def run(con, demo, *, scenario_id: int = 0, source: str = "naive_replay") -> dic
         scheduled_receipt=receipts,
         buckets=buckets,
         production_loc=production_loc,
+        working_buckets=[
+            demo.calendar.is_working(demo.horizon_start + _days(i))
+            for i in range(buckets)
+        ],
+        lot_sizing_override=(
+            cost_lot_sizing(demo.routings) if lot_sizing == "cost_based" else None
+        ),
     )
     plans = [plan for plan, _gross in planned]
     gross_by_sku = {plan.sku_id: gross for plan, gross in planned}

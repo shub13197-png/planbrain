@@ -164,6 +164,97 @@ def test_contains_launches_and_discontinuations(demo):
     assert len(demo.discontinued_mid_history) >= 3
 
 
+def test_contains_sustained_demand_drift(demo):
+    """Lifecycle events are steps; drift is a trend, and only drift makes a
+    set-once reorder point go stale. Without it, item 5's stale comparator was
+    under-evidenced."""
+    assert len(demo.drifting_series) >= 30
+    changes = [c for _key, c in demo.drifting_series]
+    assert max(changes) > 0.5, "some series should grow substantially"
+    assert min(changes) < -0.2, "some series should decay"
+
+
+def test_drift_is_deterministic(demo):
+    assert build_demo(seed=SEED).drifting_series == demo.drifting_series
+
+
+# --------------------------------------------------------------------------
+# capacity sized from demand, per docs/capacity-sizing.md
+# --------------------------------------------------------------------------
+
+def test_every_routed_resource_gets_capacity(demo):
+    routed = {r.resource_id for r in demo.routings}
+    for resource_id in routed:
+        assert demo.resource_day_hours[resource_id] > 0
+
+
+def test_a_resource_with_no_routed_work_gets_no_capacity(demo):
+    """The QC lab: nothing routes to it, so sizing gives it nothing. Reported
+    honestly by rccp rather than given arbitrary hours."""
+    routed = {r.resource_id for r in demo.routings}
+    unrouted = [r.resource_id for r in demo.resources if r.resource_id not in routed]
+    assert unrouted
+    for resource_id in unrouted:
+        assert demo.resource_day_hours[resource_id] == 0
+
+
+def test_capacity_lands_on_the_stated_target_utilisation(demo):
+    """Reconstructs the sizing rule independently and checks the result.
+
+    This is the test that stops the rule drifting into "whatever made the plan
+    feasible": required hours over available hours must come out at the target
+    written in docs/capacity-sizing.md, not at whatever the plan happened to need.
+    """
+    from planbrain.demo.generate import (
+        CAMPAIGN_CYCLE_DAYS,
+        DAY_SHAPE,
+        TARGET_UTILISATION,
+    )
+
+    span = (demo.history_end - demo.history_start).days + 1
+    annual = {}
+    for fact in demo.facts[("fact_supply_demand", "demand_actual")]:
+        annual[fact.keys[0]] = annual.get(fact.keys[0], 0.0) + fact.qty * 365.0 / span
+    children = {}
+    for edge in demo.bom:
+        children.setdefault(edge.parent_sku_id, []).append(edge)
+    for level in ("finished", "intermediate"):
+        for part in demo.parts:
+            if part.level != level:
+                continue
+            for edge in children.get(part.sku_id, ()):
+                annual[edge.child_sku_id] = (
+                    annual.get(edge.child_sku_id, 0.0)
+                    + annual.get(part.sku_id, 0.0) * edge.qty_per
+                )
+
+    required = {}
+    for routing in demo.routings:
+        hours = annual.get(routing.sku_id, 0.0) * routing.hours_per_unit
+        hours += (365.0 / CAMPAIGN_CYCLE_DAYS) * routing.setup_hours
+        required[routing.resource_id] = required.get(routing.resource_id, 0.0) + hours
+
+    full_days = 52.0 * sum(DAY_SHAPE)
+    for resource_id, need in required.items():
+        available = demo.resource_day_hours[resource_id] * full_days
+        assert need / available == pytest.approx(TARGET_UTILISATION, rel=1e-3)
+
+
+def test_the_target_is_not_full_utilisation(demo):
+    """A plant that is never tight has no use for rough-cut, and a perfectly
+    balanced demo would make the capacity feature look unnecessary."""
+    from planbrain.demo.generate import TARGET_UTILISATION
+
+    assert 0.75 <= TARGET_UTILISATION <= 0.90
+
+
+def test_capacity_is_zero_on_closed_days(demo):
+    facts = demo.facts[("fact_capacity", "capacity_avail_hours")]
+    closed = [f for f in facts if not demo.calendar.is_working(f.bucket_date)]
+    assert closed
+    assert all(f.qty == 0 for f in closed)
+
+
 def test_contains_stockout_windows(demo):
     """Zero demand that is censored supply, not real demand. Item 4 must not learn it."""
     assert len(demo.stockout_windows) >= 5

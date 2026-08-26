@@ -206,18 +206,62 @@ def test_the_report_says_whether_the_plan_is_feasible(planned, demo):
         }
 
 
-def test_closed_days_show_up_as_load_without_capacity(planned, demo):
-    """The demo plant is shut one day a week, and netreq does not know that.
+def test_no_work_is_scheduled_on_a_closed_day(planned, demo):
+    """Item 6 found twelve such buckets per resource; item 7 fixed the cause.
 
-    This is the capacity claim in miniature: a plan that nets and lot-sizes
-    perfectly still schedules work on a day the plant is closed, and nothing
-    upstream of rccp can see it.
+    netreq now pulls a release back to the previous working bucket, so nothing
+    lands on a day the plant is shut. This asserts the bug stays fixed -- it was
+    invisible to every engine except rccp.
     """
     report = rccp.run(planned, demo)
     flagged = sum(
         len(detail["load_without_capacity"]) for detail in report["resources"].values()
     )
-    assert flagged > 0
+    assert flagged == 0
+
+
+def test_cost_based_lot_sizing_cuts_load_substantially(seeded, demo):
+    """Lot-for-lot pays a changeover on every day a blend is needed.
+
+    Trading setup against holding is what the Wagner-Whitin DP already did; it
+    only ever lacked costs. This is the capacity loop closing -- but see
+    test_cost_based_lot_sizing_does_not_reach_feasibility for what it does not do.
+    """
+    netreq.run(seeded, demo, lot_sizing="as_master")
+    as_master = rccp.run(seeded, demo)
+    netreq.run(seeded, demo, lot_sizing="cost_based")
+    cost_based = rccp.run(seeded, demo)
+
+    load_before = sum(d["load_hours"] for d in as_master["resources"].values())
+    load_after = sum(d["load_hours"] for d in cost_based["resources"].values())
+    assert load_after < load_before * 0.75
+
+
+def test_cost_based_lot_sizing_does_not_reach_feasibility(seeded, demo):
+    """The stated limit, asserted rather than hoped.
+
+    Cost-based lot sizing reduces load by batching; it never sees a per-bucket
+    capacity limit, so it cannot be steered to one. Overall utilisation drops
+    comfortably under capacity while individual buckets stay overloaded -- the
+    exact signature of cost-based rather than capacity-constrained lot sizing.
+    Genuinely capacity-constrained lot sizing is the CLSP and is out of scope.
+
+    If this test ever starts failing because the plan became feasible, that is a
+    real result and the README claim can be upgraded. It must not be made to
+    pass by tuning.
+    """
+    netreq.run(seeded, demo, lot_sizing="cost_based")
+    report = rccp.run(seeded, demo)
+
+    load = sum(d["load_hours"] for d in report["resources"].values())
+    capacity = sum(d["capacity_hours"] for d in report["resources"].values())
+    assert load < capacity, "on average the plan fits"
+
+    overloaded = sum(
+        len(d["overloaded_buckets"]) for d in report["resources"].values()
+    )
+    assert overloaded > 0, "but not bucket by bucket"
+    assert report["feasible"] is False
 
 
 def test_run_refuses_a_frozen_scenario(planned, demo):

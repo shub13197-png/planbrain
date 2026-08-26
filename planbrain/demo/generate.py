@@ -115,6 +115,12 @@ class DemoDataset:
     launched_mid_history: list = field(default_factory=list)
     discontinued_mid_history: list = field(default_factory=list)
     stockout_windows: list = field(default_factory=list)
+    #: (key, total multiplicative change across the history). Sustained trend,
+    #: which is what makes a set-once reorder point go stale -- lifecycle events
+    #: alone do not.
+    drifting_series: list = field(default_factory=list)
+    #: Sized hours per full working day, per resource. See docs/capacity-sizing.md.
+    resource_day_hours: dict = field(default_factory=dict)
 
 
 def build_demo(seed: int = 7) -> DemoDataset:
@@ -150,6 +156,7 @@ def build_demo(seed: int = 7) -> DemoDataset:
 
     demo.facts[("fact_supply_demand", "demand_actual")] = _build_demand(rng, demo)
     demo.facts[("fact_supply_demand", "scheduled_receipt")] = _build_receipts(rng, demo)
+    demo.resource_day_hours = _size_resources(demo)
     demo.facts[("fact_capacity", "capacity_avail_hours")] = _build_capacity(rng, demo)
     demo.stock_on_hand = _build_stock(rng, demo)
     return demo
@@ -210,11 +217,15 @@ def _build_parts_and_bom(rng):
 
 def _build_resources():
     return [
-        Resource(101, "Blender A 20kL", "blend"),
-        Resource(102, "Blender B 10kL", "blend"),
-        Resource(103, "Blender C 5kL", "blend"),
-        Resource(104, "Fill Line 1 small pack", "fill"),
-        Resource(105, "Fill Line 2 drum", "fill"),
+        # Work centres, not individual machines. A centre may hold parallel
+        # equipment, so its available hours can exceed 24 in a day -- see
+        # docs/capacity-sizing.md. Which vessel does which job is finite
+        # scheduling, which rough-cut deliberately does not know.
+        Resource(101, "Blending, large batch", "blend"),
+        Resource(102, "Blending, medium batch", "blend"),
+        Resource(103, "Blending, small batch", "blend"),
+        Resource(104, "Filling, small pack", "fill"),
+        Resource(105, "Filling, drum", "fill"),
         Resource(106, "QC lab", "qc"),
     ]
 
@@ -302,8 +313,26 @@ def _series_for(rng, pattern, span, demo, part, loc_id):
             qty *= rng.uniform(2.5, 6.0)
         values[t] = qty
 
+    _apply_drift(rng, values, span, demo, part, loc_id)
     _apply_lifecycle(rng, values, span, demo, part, loc_id)
     return [int(round(v)) for v in values]
+
+
+#: Share of series carrying a sustained trend, and how far it can travel across
+#: the whole history. Drift is what makes a set-once reorder point go stale;
+#: launches and discontinuations do not, because they are visible as steps.
+DRIFT_SHARE = 0.35
+DRIFT_RANGE = (-0.55, 1.20)
+
+
+def _apply_drift(rng, values, span, demo, part, loc_id):
+    """Multiply the series by a trend that grows or decays across the history."""
+    if rng.random() >= DRIFT_SHARE:
+        return
+    total_change = rng.uniform(*DRIFT_RANGE)
+    for t in range(span):
+        values[t] *= 1.0 + total_change * (t / max(1, span - 1))
+    demo.drifting_series.append(((part.sku_id, loc_id), round(total_change, 3)))
 
 
 def _apply_lifecycle(rng, values, span, demo, part, loc_id):
@@ -391,6 +420,59 @@ def _build_stock(rng, demo):
     return stock
 
 
+#: See docs/capacity-sizing.md. Both committed before any capacity was computed.
+CAMPAIGN_CYCLE_DAYS = 14
+TARGET_UTILISATION = 0.82
+
+#: Relative capacity of a full working day, by weekday. Two shifts Mon-Fri, one
+#: on Saturday, closed Sunday.
+DAY_SHAPE = (1.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.0)
+
+
+def _size_resources(demo) -> dict:
+    """Hours per full working day per resource, sized from DEMAND not from load.
+
+    Steps 1-6 of docs/capacity-sizing.md. Nothing here reads a plan, a load
+    figure, or anything netreq produced -- that is the whole point of the rule.
+    """
+    span_days = (demo.history_end - demo.history_start).days + 1
+    annual = {}
+    for fact in demo.facts[("fact_supply_demand", "demand_actual")]:
+        sku_id = fact.keys[0]
+        annual[sku_id] = annual.get(sku_id, 0.0) + fact.qty * 365.0 / span_days
+
+    children = {}
+    for edge in demo.bom:
+        children.setdefault(edge.parent_sku_id, []).append(edge)
+    for level in ("finished", "intermediate"):
+        for part in demo.parts:
+            if part.level != level:
+                continue
+            volume = annual.get(part.sku_id, 0.0)
+            for edge in children.get(part.sku_id, ()):
+                annual[edge.child_sku_id] = (
+                    annual.get(edge.child_sku_id, 0.0) + volume * edge.qty_per
+                )
+
+    setups_per_year = 365.0 / CAMPAIGN_CYCLE_DAYS
+    required = {}
+    for routing in demo.routings:
+        hours = annual.get(routing.sku_id, 0.0) * routing.hours_per_unit
+        hours += setups_per_year * routing.setup_hours
+        required[routing.resource_id] = required.get(routing.resource_id, 0.0) + hours
+
+    full_days_per_year = 52.0 * sum(DAY_SHAPE)
+    return {
+        resource.resource_id: round(
+            required.get(resource.resource_id, 0.0)
+            / TARGET_UTILISATION
+            / full_days_per_year,
+            2,
+        )
+        for resource in demo.resources
+    }
+
+
 def _build_capacity(rng, demo):
     """Available hours per resource over the forward horizon.
 
@@ -400,15 +482,11 @@ def _build_capacity(rng, demo):
     """
     facts = []
     for resource in demo.resources:
+        day_hours = demo.resource_day_hours.get(resource.resource_id, 0.0)
         for i in range(HORIZON_DAYS):
             day = demo.horizon_start + timedelta(days=i)
-            if not demo.calendar.is_working(day):
-                hours = 0.0
-            elif day.weekday() == 5:
-                hours = 8.0
-            else:
-                hours = 16.0
+            hours = round(day_hours * DAY_SHAPE[day.weekday()], 2)
             if hours and rng.random() < 0.04:  # planned maintenance
-                hours = round(hours / 2, 1)
+                hours = round(hours / 2, 2)
             facts.append(Fact((resource.resource_id,), day, hours))
     return facts

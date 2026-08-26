@@ -72,3 +72,61 @@ stale comparator is then re-run.
 **Committed in advance:** if the stale reorder point still holds up under drift,
 claim 3 — "parameters that stay fitted rather than going stale" — is **dropped**
 from the README, not softened.
+
+---
+
+# Outcome
+
+*Appended after running. Nothing above this line was changed.*
+
+## Sized hours per full working day
+
+| work centre | hours |
+|---|---|
+| Blending, large batch | 35.24 |
+| Blending, medium batch | 30.50 |
+| Blending, small batch | 30.41 |
+| Filling, small pack | 50.10 |
+| Filling, drum | 41.12 |
+| QC lab | 0.00 |
+
+The QC lab gets nothing because no routing points at it. Sizing gives it no
+hours rather than an arbitrary number, and `rccp` reports it honestly as a
+resource with no capacity and no load.
+
+## The result, unedited
+
+The unchanged plan went from **~3x over capacity to 127%** — still infeasible.
+With cost-based lot sizing it reaches **75% overall and remains infeasible in 35
+of 450 resource-buckets**.
+
+Full numbers in `docs/rccp.md`.
+
+**The sizing rule was applied once and not revisited.** The 82% target and the
+14-day campaign assumption are exactly as committed above. A test
+(`test_capacity_lands_on_the_stated_target_utilisation`) reconstructs the rule
+independently and asserts the capacity actually lands on the stated target, so
+the rule cannot quietly drift into "whatever made the plan feasible".
+
+The gap between the 14-day sizing assumption and the plan's actual behaviour is
+the finding, exactly as anticipated: lot-for-lot runs 5,593 campaigns in 90
+buckets where sizing assumed roughly 6.4 per SKU per quarter.
+
+## Drift outcome
+
+35% of series carry a sustained trend, from −48% to +119% across the history.
+
+Re-running the item 5 comparison **changed the stale-reorder-point result**:
+
+| | without drift | with drift |
+|---|---|---|
+| tuned reorder point | 94.1% | 95.2% |
+| stale reorder point | 93.3% | 91.9% |
+| **gap** | **0.8 pts** | **3.3 pts** |
+
+Staleness now costs 3.3 points of fill rate on comparable stock, and it bites
+hardest on exactly the classes this tool claims: intermittent 87.3% against a
+tuned 93.9%, lumpy 86.0% against 94.0%.
+
+**Claim 3 survives, with evidence.** The pre-commitment was that it would be
+dropped if drift changed nothing. It changed something.

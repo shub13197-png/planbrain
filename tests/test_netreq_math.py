@@ -262,6 +262,100 @@ def test_a_release_before_the_horizon_is_reported_and_placed_in_bucket_zero():
     assert late[0].days_late == 5
 
 
+def test_a_release_is_pulled_back_to_the_previous_working_bucket():
+    """Bucket 3 is closed, so a release that lands there moves to bucket 2.
+
+    Backward, not forward: starting later would make the receipt late, which is
+    the thing the lead-time offset exists to prevent. Without this the plan
+    schedules production on days the plant is shut, and nothing upstream of rccp
+    can see it.
+    """
+    working = [True] * 7
+    working[3] = False
+    plan = plan_item(_item(
+        lead_time_days=2,
+        gross_req=[0.0, 0.0, 0.0, 0.0, 0.0, 60.0, 0.0],
+        working_buckets=working,
+    ))
+    assert plan.planned_order_receipt[5] == 60.0
+    assert plan.planned_order_release[3] == 0.0
+    assert plan.planned_order_release[2] == 60.0
+
+
+def test_consecutive_closed_buckets_are_stepped_over():
+    working = [True] * 7
+    working[2] = working[3] = False
+    plan = plan_item(_item(
+        lead_time_days=1,
+        gross_req=[0.0, 0.0, 0.0, 0.0, 50.0, 0.0, 0.0],
+        working_buckets=working,
+    ))
+    assert plan.planned_order_release[1] == 50.0
+
+
+def test_pulling_back_past_the_horizon_becomes_a_past_due_release():
+    working = [False, False, True]
+    plan = plan_item(_item(
+        lead_time_days=1, gross_req=[0.0, 60.0, 0.0], working_buckets=working,
+    ))
+    assert plan.planned_order_release[0] == 60.0
+    assert [e.kind for e in plan.exceptions if e.kind == "past_due_release"]
+
+
+def test_without_a_calendar_nothing_changes():
+    """The flags are optional; a caller that has no calendar gets plain offset."""
+    plan = plan_item(_item(lead_time_days=2, gross_req=[0.0, 0.0, 0.0, 50.0]))
+    assert plan.planned_order_release[1] == 50.0
+
+
+# --------------------------------------------------------------------------
+# cost-based lot sizing
+# --------------------------------------------------------------------------
+
+def test_cost_lot_sizing_prices_changeover_in_capacity_hours():
+    """Hours are the currency, so no money has to be invented."""
+    from planbrain.netreq import cost_lot_sizing
+
+    class _R:
+        def __init__(self, sku_id, setup_hours, hours_per_unit):
+            self.sku_id, self.setup_hours = sku_id, setup_hours
+            self.hours_per_unit = hours_per_unit
+
+    sizing = cost_lot_sizing([_R(10, 2.0, 0.0015)], annual_carrying_rate=0.25)
+    ls = sizing[10]
+    assert ls.policy == "wagner_whitin"
+    assert ls.setup_cost == 2.0
+    assert ls.holding_cost == pytest.approx(0.0015 * 0.25 / 365)
+
+
+def test_cost_lot_sizing_skips_routings_with_no_changeover():
+    """No setup means nothing to trade against holding, so lot-for-lot stands."""
+    from planbrain.netreq import cost_lot_sizing
+
+    class _R:
+        def __init__(self, sku_id, setup_hours, hours_per_unit):
+            self.sku_id, self.setup_hours = sku_id, setup_hours
+            self.hours_per_unit = hours_per_unit
+
+    assert cost_lot_sizing([_R(10, 0.0, 0.0015)]) == {}
+    assert cost_lot_sizing([_R(10, 2.0, 0.0)]) == {}
+
+
+def test_cost_lot_sizing_batches_where_lot_for_lot_would_not():
+    """The whole mechanism: a large changeover buys a longer campaign."""
+    from planbrain.netreq import LotSizing
+
+    daily = [100.0] * 30
+    lfl = plan_item(_item(gross_req=list(daily)))
+    batched = plan_item(_item(
+        gross_req=list(daily),
+        lot_sizing=LotSizing(policy="wagner_whitin", setup_cost=2.0,
+                             holding_cost=0.0015 * 0.25 / 365),
+    ))
+    assert sum(1 for q in lfl.planned_order_receipt if q > 0) == 30
+    assert sum(1 for q in batched.planned_order_receipt if q > 0) == 1
+
+
 def test_several_receipts_can_collapse_onto_one_release_bucket():
     plan = plan_item(_item(lead_time_days=3, gross_req=[10.0, 20.0, 0.0]))
     assert plan.planned_order_release[0] == 30.0
