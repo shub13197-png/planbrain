@@ -132,6 +132,36 @@ def test_the_naive_zero_forecast_also_holds_far_less_stock(report):
     assert naive < fitted
 
 
+def test_both_reorder_points_are_reported_separately(report):
+    """Tuned and stale are different claims and must not be collapsed.
+
+    "Well-tuned" presupposes ongoing tuning nobody is doing. The stale row is
+    what an SME incumbent actually looks like: parameters set once and never
+    revisited.
+    """
+    tuned = report["policies"]["reorder_point"]
+    stale = report["policies"]["reorder_point_stale"]
+    assert tuned.fill_rate.n_scored == stale.fill_rate.n_scored
+    assert tuned.fill_rate.value != stale.fill_rate.value
+
+
+def test_a_stale_rule_never_orders_a_sku_launched_after_it_was_set():
+    """The mechanism by which staleness bites, isolated from the portfolio.
+
+    A SKU with no demand in the fitting window has a mean of zero, so s and S are
+    both zero and the rule never triggers. In the field this is the SKU nobody
+    noticed was launched.
+    """
+    from planbrain.simulate.policies import reorder_point
+
+    stale = reorder_point(mean_demand=0.0, lead_time_days=5)
+    assert stale(0, 0.0, 0.0) == 0.0
+
+    outcome = replay([8.0] * 60, stale, initial_on_hand=0.0, lead_time_days=5)
+    assert outcome.units_served == 0.0
+    assert outcome.fill_rate == 0.0
+
+
 def test_the_reorder_point_is_a_real_incumbent_not_a_straw_man(report):
     """A tool that cannot roughly match a spreadsheet rule is not worth installing.
 

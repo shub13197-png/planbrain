@@ -740,3 +740,67 @@ unsafe thing impossible rather than documented.
 together in one `PolicyResult`, because a policy hits any fill rate by holding
 enough stock and holds almost no stock by serving nobody. Either alone is
 meaningless.
+
+## 2026-08-26 — A stale reorder point joins the comparison permanently
+
+**Decided.** Two reorder-point comparators, always reported separately and
+clearly labelled: **tuned** (refit on all history) and **stale** (parameters
+frozen on the first third, never revisited).
+
+**Why:** "well-tuned" presupposes ongoing tuning nobody is doing. The stale rule
+is what an SME incumbent actually looks like -- numbers set once, possibly by
+someone who has left. The tuned row was not the honest incumbent.
+
+**Not a way to weaken the baseline.** Both are kept. The tuned row stays in
+permanently.
+
+**And the finding went against us, recorded unedited:** the stale rule holds up
+almost as well -- 93.3% fill against 94.1%, on identical stock, with the gap
+mainly on intermittent demand (95.0% against 97.8%). That weakens the
+"parameters go stale" argument on this dataset.
+
+**Caveat that cuts against us in the other direction:** the demo history is
+largely stationary -- lifecycle events but no sustained demand drift. Staleness
+bites hardest under drift, so this dataset **under-tests** the stale comparator.
+Logged as a generator gap. Until it is fixed, the narrow tuned-versus-stale gap
+is under-evidenced rather than a result.
+
+## 2026-08-26 — POSITIONING: the claim is not "better forecasts"
+
+**Decided, and it supersedes any earlier framing.** Planning Brain claims
+exactly three things:
+
+1. **Lumpy and intermittent demand**, where the evidence is strong and
+   spreadsheets fail worst.
+2. **Capacity-feasible plans.** A reorder point structurally cannot produce one.
+   This is where `rccp` (item 6) lands, and it is a difference in kind rather
+   than degree.
+3. **Parameters that stay fitted rather than going stale.**
+
+**Portfolio-level forecast accuracy is NOT a selling point and must not be
+presented as one anywhere** -- README, docs, or demo.
+
+**Why:** item 5 measured the fitted forecast at 95.7% fill against a tuned
+reorder point's 94.1% and a stale one's 93.3% on comparable stock. At portfolio
+level this is competitive with a spreadsheet rule, not dramatically better. The
+clear win is lumpy demand: 84.4% on 868 units against 82.0% on 910, better
+service on less stock.
+
+**Claim 3 is currently the weakest** and is flagged as such in
+`docs/service-backtest.md` rather than leaned on.
+
+**Revisit after item 6**, when capacity feasibility exists and there may be a
+stronger honest story.
+
+## 2026-08-26 — The README publishes the uncomfortable comparison
+
+**Decided.** The service table is the README centrepiece, including the row
+where a spreadsheet rule matches us, and with all gaps stated.
+
+**Rejected: a finance-manager pitch version.** A project that publishes a result
+showing it is only competitive on part of the portfolio is far more credible
+than one that publishes only its wins, and credibility is what this repo is for.
+
+**Rejected: leading with the 95.7% headline.** It is true and it is not the
+point; leading with it would be exactly the "better forecasts" framing that has
+just been retired.

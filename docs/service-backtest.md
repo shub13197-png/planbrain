@@ -26,7 +26,8 @@ question is restated as the one a finance manager actually asks:
 |---|---|---|---|
 | fitted forecast | **95.7%** | 1,208 | 4,410 |
 | naive zero forecast | 78.2% | 282 | 21,483 |
-| reorder point (s,S) | 94.1% | 824 | 11,462 |
+| reorder point, **tuned** | 94.1% | 824 | 11,462 |
+| reorder point, **stale** | 93.3% | 824 | 15,225 |
 
 By demand pattern, fill rate / average on-hand:
 
@@ -34,7 +35,31 @@ By demand pattern, fill rate / average on-hand:
 |---|---|---|---|---|
 | fitted forecast | 98.7% / 1,189 | 98.7% / 1,023 | **84.4% / 868** | 99.9% / 1,719 |
 | naive zero | 91.3% / 249 | 70.6% / 286 | **48.1% / 36** | 97.7% / 535 |
-| reorder point | 97.7% / 842 | 97.8% / 828 | 82.0% / 910 | 97.6% / 722 |
+| reorder point, tuned | 97.7% / 842 | 97.8% / 828 | 82.0% / 910 | 97.6% / 722 |
+| reorder point, stale | 97.2% / 830 | 95.0% / 819 | 81.3% / 900 | 98.0% / 754 |
+
+### Two reorder-point rows, on purpose
+
+**Tuned** refits its parameters on all available history. **Stale** freezes them
+on the first third and never revisits — which is what an SME incumbent actually
+looks like. Nobody re-derives their reorder points quarterly; the numbers were
+set once, possibly by someone who has since left.
+
+The tuned row is not the honest incumbent, because "well-tuned" presupposes
+ongoing tuning nobody is doing.
+
+**And the stale rule holds up almost as well: 93.3% against 94.1%, on identical
+stock.** The gap shows up mainly on intermittent demand (95.0% against 97.8%).
+That is reported unedited because it is a real finding, and it weakens the
+"parameters go stale" argument on this dataset.
+
+**With an important caveat that cuts against us, not for us:** the demo history
+is largely *stationary*. It carries launches, discontinuations and stockouts,
+but no sustained demand drift — no SKU that quietly doubles over eighteen
+months. Staleness bites hardest under drift, so this dataset **under-tests the
+stale comparator** and is being kind to it in one direction and unkind in
+another. Adding drift to the generator is a logged gap. Until then, treat the
+narrow tuned-versus-stale gap as under-evidenced rather than as a result.
 
 ### The intermittent question, settled
 
@@ -58,17 +83,19 @@ Sweeping safety stock, same 40 series:
 |---|---|---|---|---|---|
 | fitted forecast | 91.9% / 704 | 95.1% / 916 | 95.7% / 1,208 | 95.8% / 1,723 | 95.9% / 2,239 |
 | naive zero | 4.4% / 30 | 50.0% / 68 | 78.2% / 282 | 89.5% / 804 | 92.1% / 1,342 |
-| reorder point | 94.1% / 824 | flat — | flat — | flat — | flat — |
+| reorder point, tuned | 94.1% / 824 | flat — | flat — | flat — | flat — |
+| reorder point, stale | 93.3% / 824 | flat — | flat — | flat — | flat — |
 
-The reorder point's row is flat by construction: its buffer comes from demand
+Both reorder-point rows are flat by construction: their buffer comes from demand
 variability, not the safety-days setting.
 
 ### The honest reading, including the uncomfortable part
 
-**The fitted forecast is competitive with a well-tuned reorder point, not
-dramatically better than it.** At 3 days of safety it reaches 95.1% on 916 units
-of stock against the incumbent's 94.1% on 824 — about a point of service for
-about 11% more inventory. At zero safety it is behind on both.
+**The fitted forecast is competitive with a reorder point, not dramatically
+better than it — tuned or stale.** At 3 days of safety it reaches 95.1% on 916
+units of stock against the tuned incumbent's 94.1% on 824 and the stale one's
+93.3% on the same 824. About a point or two of service for about 11% more
+inventory. At zero safety it is behind both on service.
 
 The clear win is **lumpy demand**, where the forecast gets better service on
 less stock (84.4% / 868 against 82.0% / 910). That is the hardest class and the
@@ -121,3 +148,11 @@ resource. None are in scope, and multi-echelon is "later if ever".
 * **No cost model.** The table reports units of stock, not money. Turning
   inventory into working capital needs unit costs, which come from the customer's
   system of record.
+* **The demo history has no sustained demand drift.** Lifecycle events yes,
+  drift no. This under-tests the stale reorder point, which is the comparator
+  most likely to be flattered by it. Adding drift to the generator would make
+  the tuned-versus-stale comparison mean something.
+* **No capacity feasibility.** Every policy here can order whatever it likes.
+  A reorder point structurally cannot produce a capacity-feasible plan, and that
+  is the dimension on which this tool differs in kind rather than in degree --
+  see `rccp`, build item 6. None of these numbers reflect it yet.

@@ -27,7 +27,8 @@ SCHEMA = Path(__file__).resolve().parents[1] / "planbrain" / "facts" / "schema.s
 LABELS = {
     "forecast": "fitted forecast",
     "naive_zero": "naive zero forecast",
-    "reorder_point": "reorder point (s,S)",
+    "reorder_point": "reorder point, tuned",
+    "reorder_point_stale": "reorder point, stale",
 }
 
 
@@ -140,6 +141,11 @@ def _print(report, args) -> None:
     print("Fill rate is units served immediately from stock, over units demanded.")
     print("Unmet demand is LOST, not backordered. Series with no demand in the")
     print("holdout have no fill rate and are counted as unscored, not as 100%.")
+    print()
+    print("Two reorder-point rows on purpose. TUNED refits its parameters on all")
+    print("available history; STALE freezes them on the first third and never")
+    print("revisits, which is what an SME incumbent actually looks like. The")
+    print("tuned row presupposes ongoing tuning nobody is doing.")
     print()
     print("The naive-zero row is the experiment. That forecast scores well on")
     print("MASE for intermittent demand -- right on every quiet day, wrong only")

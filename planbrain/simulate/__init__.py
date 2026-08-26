@@ -28,7 +28,13 @@ from .policies import (
 
 TABLE = "fact_supply_demand"
 
-POLICIES = ("forecast", "naive_zero", "reorder_point")
+POLICIES = ("forecast", "naive_zero", "reorder_point", "reorder_point_stale")
+
+#: Fraction of the training history the stale reorder point is fitted on. It is
+#: then never revisited, which is what an SME incumbent actually looks like: the
+#: numbers were set once, by someone who may have left, and nobody re-derives
+#: them quarterly. "Well-tuned" presupposes ongoing tuning nobody is doing.
+STALE_FIT_FRACTION = 1 / 3
 
 __all__ = [
     "Outcome",
@@ -102,6 +108,8 @@ def compare(
         lead_time = lead_times.get(key[0], 7)
         lot = lot_sizes.get(key[0], 0.0)
         mean, sd = demand_statistics(train)
+        stale_window = train[: max(1, int(len(train) * STALE_FIT_FRACTION))]
+        stale_mean, stale_sd = demand_statistics(stale_window)
         safety = mean * safety_days
         # Start every policy from the same position, or the comparison measures
         # the opening stock rather than the policy.
@@ -119,6 +127,14 @@ def compare(
             ),
             "reorder_point": reorder_point(
                 mean_demand=mean, lead_time_days=lead_time, demand_sd=sd,
+                safety_factor=1.0, order_quantity=lot or None,
+            ),
+            # Same rule, parameters frozen from the first third of history and
+            # never revisited. A SKU launched after that window has a mean of
+            # zero here and never gets ordered -- which is exactly what happens
+            # in the field, and why it belongs in the comparison.
+            "reorder_point_stale": reorder_point(
+                mean_demand=stale_mean, lead_time_days=lead_time, demand_sd=stale_sd,
                 safety_factor=1.0, order_quantity=lot or None,
             ),
         }
