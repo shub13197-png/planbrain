@@ -9,8 +9,8 @@ as the historical input — where the two disagree, this file wins.
 | 2 | Seeded demo dataset | done — `6a61025` |
 | 3 | `netreq` — MRP explosion | done — `7339fc7` |
 | 4 | Forecast — statsforecast + MASE backtest | done — `94971d6` |
-| **5** | **Service backtest — fill rate vs inventory** | **done** |
-| 6 | `rccp` — capacity load | not started |
+| 5 | Service backtest — fill rate vs inventory | done — `2188fb8` |
+| **6** | **`rccp` — capacity load** | **done** |
 | 7 | `haulplan` — fairness ledger, then Timefold | not started |
 | 8 | Importer | not started |
 | 9 | UI grid | not started |

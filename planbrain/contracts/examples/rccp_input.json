@@ -27,7 +27,7 @@
       "setup_hours": 1.5
     }
   ],
-  "planned_order_receipt": [
+  "planned_order_release": [
     {
       "sku_id": 101,
       "series": [

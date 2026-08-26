@@ -804,3 +804,80 @@ than one that publishes only its wins, and credibility is what this repo is for.
 **Rejected: leading with the 95.7% headline.** It is true and it is not the
 point; leading with it would be exactly the "better forecasts" framing that has
 just been retired.
+
+---
+
+# Build item 6 — rccp
+
+## 2026-08-26 — Rough-cut loads planned RELEASES, not receipts
+
+**Decided.** `rccp_input` takes `planned_order_release`. The contract changed.
+
+**Why:** work happens between release and receipt. An order released on day 8
+with a two-day lead time occupies the blender on days 8-10. Loading at the
+receipt bucket would report a plant that looks free exactly when it is busiest --
+a wrong number that reads as good news.
+
+**Decided: front-load the whole order into the release bucket** rather than
+spreading it across the lead time. That is what "rough" in rough-cut means: it
+surfaces an overload earlier rather than later, and it is honest about its own
+resolution. Exact timing within the lead time is finite scheduling, which is
+PyJobShop's job.
+
+## 2026-08-26 — Work with zero available capacity is its own exception
+
+**Decided.** `load_without_capacity` is reported separately from
+`overloaded_buckets`, and utilisation reads 0.0 in those buckets.
+
+**Why:** a bucket with zero available hours is a closed day or a resource down
+for maintenance. That is a different mistake from an overload, not a worse
+degree of one, and it is **invisible in a utilisation figure** because dividing
+by zero has no honest answer. The demo plant is shut one day a week and `netreq`
+does not know that -- twelve buckets per resource carry work on a closed day,
+which is the capacity argument in miniature.
+
+**Rejected: reporting infinity or a sentinel utilisation.** Both are numbers
+somebody would then average.
+
+## 2026-08-26 — Load is split into run time and changeover
+
+**Decided.** The report separates them.
+
+**Why:** they have different fixes. Changeover is attacked by lot sizing and
+campaign sequencing; run time can only be attacked by more capacity or less
+demand. One combined number would hide which problem the plant has.
+
+**First result:** 8,527 h run time (51.5%) against 8,020 h changeover (48.5%).
+Nearly half the load is changeover because `netreq` uses lot-for-lot on
+intermediates, so a blend is made on every day it is needed -- a median of 26
+production days per SKU over 90 buckets, each paying a full setup.
+
+## 2026-08-26 — The demo plant is not capacity-balanced, and that is logged not fixed
+
+**Found.** The first rccp run reports the plan at roughly 3x capacity,
+overloaded in 86 of 90 buckets. Run time *alone* exceeds total capacity by 54%,
+so no lot-sizing policy could rescue it.
+
+**Cause:** the item 2 generator produced routing rates and setup times
+independently of demand volumes. Nothing ever checked that the plant could make
+what it sells.
+
+**Rejected: retuning the generator until the plan looks feasible.** That is
+tuning around an uncomfortable result, which this project does not do. Logged as
+a gap in `docs/rccp.md` and the README instead.
+
+**Consequence for positioning, stated explicitly:** the demo can evidence *"we
+detect infeasible plans"* and cannot yet evidence *"we produce feasible ones"*.
+Claim 2 in the README was rewritten from "capacity-feasible plans" to "capacity
+awareness" to match what is actually demonstrated. Detecting the problem is a
+real capability worth having -- a planner who learns on Monday that the week is
+3x over is better off than one who finds out on Thursday -- but it is not the
+same claim, and the two must not be blurred.
+
+## 2026-08-26 — Loading without a plan is refused
+
+**Decided.** `rccp.run` raises `NoPlanError` when every planned release is zero.
+
+**Why:** all-zero means `netreq` has not run for this horizon, not that the
+plant is idle. Reporting a comfortably empty factory is the most reassuring
+possible wrong answer. Same class as the empty-forecast guard at item 4.

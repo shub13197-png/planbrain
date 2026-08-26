@@ -79,8 +79,11 @@ nobody.
 **Claims:**
 
 1. **Lumpy and intermittent demand.** Strong evidence, above.
-2. **Capacity-feasible plans.** A reorder point structurally cannot produce one
-   — it has no concept of a blender being full. Build item 6.
+2. **Capacity awareness.** A reorder point has no concept of a blender being
+   full. `rccp` loads the plan onto resources and reports whether the plant can
+   make it — including work scheduled on days it is closed, which nothing
+   upstream can see. **It currently detects infeasibility rather than producing
+   feasible plans**; see the gaps.
 3. **Parameters that stay fitted rather than going stale.** Currently the
    weakest of the three; see the gaps below.
 
@@ -89,8 +92,14 @@ above are why.
 
 ## Gaps, stated plainly
 
-* **Capacity feasibility is not built yet.** Claim 2 is a design intention, not
-  a measurement. Nothing above reflects it.
+* **Capacity checking detects, it does not yet fix.** `rccp` correctly reports
+  the current demo plan as roughly 3x over capacity. Nothing acts on that:
+  closing the loop needs lot sizing that prices changeover, then campaign
+  sequencing. The service table above assumes unlimited capacity.
+* **The demo plant is not capacity-balanced.** Its routings were generated
+  without reference to its demand, so run time alone exceeds total capacity by
+  54%. The demo can evidence "we detect infeasible plans" and cannot yet
+  evidence "we produce feasible ones".
 * **The demo history has no sustained demand drift** — lifecycle events yes,
   drift no. Staleness bites hardest under drift, so the stale comparator is
   under-tested and claim 3 is under-evidenced.
@@ -146,6 +155,7 @@ quietly excluding the hard ones is how a portfolio average gets improved.
 | [`docs/contracts/facts.md`](docs/contracts/facts.md) | The fact grain and the sparse rule |
 | [`docs/netreq.md`](docs/netreq.md) | Time-phased MRP |
 | [`docs/forecast.md`](docs/forecast.md) | Model selection and MASE, including its limits |
+| [`docs/rccp.md`](docs/rccp.md) | Rough-cut capacity, and what it does not yet prove |
 | [`docs/demo.md`](docs/demo.md) | The seeded dataset |
 
 `docs/decisions.md` records rejections as prominently as decisions. Rejections
@@ -156,9 +166,10 @@ weeks.
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                                  # 290 tests
+pytest -q                                  # 317 tests
 python -m tools.check_fact_access          # the CI gate
 python -m tools.seed_demo                  # build the demo database
 python -m tools.service_report --sample 40 # the evidence above
 python -m tools.service_report --sweep     # service-vs-inventory frontier
+python -m tools.capacity_report            # can the plant make the plan?
 ```

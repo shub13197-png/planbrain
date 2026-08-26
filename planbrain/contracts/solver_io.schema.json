@@ -141,7 +141,7 @@
 
     "rccp_input": {
       "type": "object",
-      "description": "Rough-cut capacity: load the planned receipts onto resources via routings and compare with available hours. No sequencing, no finite scheduling.",
+      "description": "Rough-cut capacity: load planned order RELEASES onto resources via routings and compare with available hours. Releases, not receipts: work happens between release and receipt, so loading at the receipt bucket would report a plant that looks free exactly when it is busiest. No sequencing, no finite scheduling.",
       "properties": {
         "scenario_id": {"type": "integer", "minimum": 0},
         "horizon": {"$ref": "#/$defs/horizon"},
@@ -173,8 +173,9 @@
             "additionalProperties": false
           }
         },
-        "planned_order_receipt": {
+        "planned_order_release": {
           "type": "array",
+          "description": "When work starts. Rough-cut front-loads the whole order into the release bucket rather than spreading it across the lead time -- conservative, and honest about its own resolution. Exact timing within the lead time is finite scheduling.",
           "items": {
             "type": "object",
             "properties": {
@@ -186,7 +187,7 @@
           }
         }
       },
-      "required": ["scenario_id", "horizon", "resources", "routings", "planned_order_receipt"],
+      "required": ["scenario_id", "horizon", "resources", "routings", "planned_order_release"],
       "additionalProperties": false
     },
 
@@ -207,9 +208,14 @@
                 "type": "array",
                 "description": "Bucket indices where load exceeds available. Reported explicitly rather than left for the UI to recompute, so the number the planner sees and the number the report counts are the same number.",
                 "items": {"type": "integer", "minimum": 0}
+              },
+              "load_without_capacity": {
+                "type": "array",
+                "description": "Buckets carrying work where ZERO hours are available -- a closed day, or a resource down for maintenance. A subset of overloaded_buckets, reported separately because it is a different mistake rather than a degree of overload, and because it is invisible in utilisation: dividing by zero has no honest answer, so utilisation reads 0.0 there.",
+                "items": {"type": "integer", "minimum": 0}
               }
             },
-            "required": ["resource_id", "capacity_load_hours", "utilisation", "overloaded_buckets"],
+            "required": ["resource_id", "capacity_load_hours", "utilisation", "overloaded_buckets", "load_without_capacity"],
             "additionalProperties": false
           }
         }

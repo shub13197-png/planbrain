@@ -53,7 +53,7 @@ EXAMPLES = {
         "routings": [
             {"sku_id": 101, "resource_id": 5, "hours_per_unit": 0.05, "setup_hours": 1.5}
         ],
-        "planned_order_receipt": [{"sku_id": 101, "series": [200.0, 0.0, 0.0, 200.0, 0.0]}],
+        "planned_order_release": [{"sku_id": 101, "series": [200.0, 0.0, 0.0, 200.0, 0.0]}],
     },
     "rccp_output": {
         "meta": {
@@ -69,6 +69,7 @@ EXAMPLES = {
                 "capacity_load_hours": [11.5, 0.0, 0.0, 11.5, 0.0],
                 "utilisation": [0.72, 0.0, 0.0, 0.72, 0.0],
                 "overloaded_buckets": [],
+                "load_without_capacity": [],
             }
         ],
     },

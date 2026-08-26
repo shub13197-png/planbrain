@@ -75,9 +75,20 @@ def test_long_dense_series_is_rejected():
 def test_series_length_is_checked_below_a_nested_array():
     """rccp nests series two levels deep; the walker must reach them."""
     payload = _example("rccp_input")
-    payload["planned_order_receipt"][0]["series"] = [1.0]
-    with pytest.raises(ContractError, match="planned_order_receipt"):
+    payload["planned_order_release"][0]["series"] = [1.0]
+    with pytest.raises(ContractError, match="planned_order_release"):
         validate_payload("rccp_input", payload)
+
+
+def test_rccp_loads_releases_not_receipts():
+    """Work happens between release and receipt.
+
+    Loading at the receipt bucket would report a plant that looks free exactly
+    when it is busiest, which is a wrong number that reads as good news.
+    """
+    payload = _example("rccp_input")
+    assert "planned_order_release" in payload
+    assert "planned_order_receipt" not in payload
 
 
 def test_horizon_must_be_daily():
