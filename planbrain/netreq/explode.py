@@ -125,26 +125,33 @@ def _lot_sizing_for(part, override: dict = None) -> LotSizing:
     return LotSizing(policy=part.lot_policy)
 
 
-#: Annual carrying charge, applied to the capacity value embedded in a unit.
-#: A business assumption, stated rather than fitted -- and deliberately NOT
-#: chosen to make the capacity result come out feasible.
+#: Annual carrying charge. A business assumption, stated rather than fitted,
+#: and explicitly out of bounds for tuning -- see docs/unit-costs.md.
 ANNUAL_CARRYING_RATE = 0.25
 
+#: Cost of an hour of production time: line crew, energy, lost throughput.
+CAPACITY_COST_PER_HOUR = 1500.0
 
-def cost_lot_sizing(routings, *, annual_carrying_rate: float = ANNUAL_CARRYING_RATE) -> dict:
-    """Wagner-Whitin parameters per SKU, priced in capacity hours.
+
+def cost_lot_sizing(routings, parts=None, *,
+                    annual_carrying_rate: float = ANNUAL_CARRYING_RATE,
+                    capacity_cost_per_hour: float = CAPACITY_COST_PER_HOUR) -> dict:
+    """Wagner-Whitin parameters per SKU, priced in money.
 
     Lot-for-lot minimises inventory and is blind to changeover: it makes a blend
     on every day it is needed, and rough-cut showed the demo paying a full setup
     roughly every third day as a result. Trading setup against holding is what
     the Wagner-Whitin DP in core.py already does; it only ever lacked costs.
 
-    **Hours are the currency**, which keeps the units self-consistent without
-    inventing money the customer has not given us:
+    * a changeover costs ``setup_hours x capacity_cost_per_hour``;
+    * a unit held for a bucket costs ``unit_cost x carrying_rate / 365``.
 
-    * a changeover costs ``setup_hours`` of capacity;
-    * a unit held for a bucket costs the capacity embedded in it,
-      ``hours_per_unit``, times the carrying rate per bucket.
+    **Money, not hours.** An earlier version priced holding by the capacity
+    hours embedded in a unit. That made holding nearly free against a two-hour
+    changeover and produced campaigns of a quarter's supply -- economically
+    consistent and operationally absurd. A litre of lubricant costs money to
+    hold because of the material in it, not the machine-minutes. Without
+    ``parts`` this falls back to the old hours basis, which no caller should do.
 
     **Stated limit, and it matters.** This is *cost-based* lot sizing, not a
     capacity constraint. It reduces load by batching and may or may not reach
@@ -154,16 +161,20 @@ def cost_lot_sizing(routings, *, annual_carrying_rate: float = ANNUAL_CARRYING_R
     infeasible after this, that is a real residual and not an oversight.
     """
     per_bucket_rate = annual_carrying_rate / 365.0
+    unit_cost = {p.sku_id: p.unit_cost for p in parts} if parts else {}
     sizing = {}
     for routing in routings:
-        if routing.setup_hours <= 0 or routing.hours_per_unit <= 0:
+        if routing.setup_hours <= 0:
             continue
-        holding = routing.hours_per_unit * per_bucket_rate
-        if holding <= 0:
+        if unit_cost:
+            holding = unit_cost.get(routing.sku_id, 0.0) * per_bucket_rate
+            setup = routing.setup_hours * capacity_cost_per_hour
+        else:
+            holding = routing.hours_per_unit * per_bucket_rate
+            setup = routing.setup_hours
+        if holding <= 0 or setup <= 0:
             continue
         sizing[routing.sku_id] = LotSizing(
-            policy="wagner_whitin",
-            setup_cost=routing.setup_hours,
-            holding_cost=holding,
+            policy="wagner_whitin", setup_cost=setup, holding_cost=holding,
         )
     return sizing

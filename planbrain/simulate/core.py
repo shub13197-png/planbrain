@@ -116,7 +116,16 @@ def replay(
             order = policy(t, state.on_hand, state.inbound)
             if order and order > 0:
                 arrival = t + lead_time_days
-                state.pipeline[arrival] = state.pipeline.get(arrival, 0.0) + order
+                if arrival == t:
+                    # Same-bucket delivery. This must be added to stock directly:
+                    # this bucket's arrivals were popped above, so anything put
+                    # into the pipeline at t is never collected and the order
+                    # vanishes without a sound. Found by cross-checking against
+                    # the reconciliation ladder, which replays a fixed schedule
+                    # at zero lead time.
+                    state.on_hand += order
+                else:
+                    state.pipeline[arrival] = state.pipeline.get(arrival, 0.0) + order
                 orders += 1
                 ordered += order
 

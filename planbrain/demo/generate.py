@@ -58,6 +58,9 @@ class Part:
     safety_stock: float
     lot_policy: str
     lot_qty: float
+    #: Standard cost per unit, rolled up through the BOM. See docs/unit-costs.md.
+    #: Zero until _cost_parts() runs, which needs the BOM to exist first.
+    unit_cost: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -131,6 +134,7 @@ def build_demo(seed: int = 7) -> DemoDataset:
         Location(i, name, "depot") for i, name in DEPOTS
     ]
     parts, bom = _build_parts_and_bom(rng)
+    parts = _cost_parts(parts, bom)
     resources = _build_resources()
     routings = _build_routings(rng, parts, resources)
     trucks = [
@@ -213,6 +217,60 @@ def _build_parts_and_bom(rng):
             bom.append(BomEdge(3000 + i, 2000 + child, round(rng.uniform(0.8, 1.05), 3)))
 
     return parts, bom
+
+
+#: docs/unit-costs.md, all committed before any cost was computed. Synthetic
+#: currency; a real deployment reads every one of these from the system of record.
+BASE_OIL_COST = 90.0
+ADDITIVE_COST = 350.0
+CONVERSION_ADDER = 8.0
+PACKAGING_COST = {"1L": 12.0, "5L": 22.0, "20L": 45.0, "26L": 52.0, "210L": 180.0}
+CAPACITY_COST_PER_HOUR = 1500.0
+
+
+def _cost_parts(parts, bom):
+    """Standard cost roll-up: raws priced by type, everything else from its BOM.
+
+    Runs after the BOM exists because an intermediate's cost is the sum of its
+    children's. Parents are costed after children, which the level order below
+    guarantees -- the demo BOM is exactly three deep, so no general topological
+    sort is needed and pretending otherwise would be over-engineering.
+    """
+    cost = {}
+    for part in parts:
+        if part.level == "raw":
+            # Base oils occupy the even ids; additives the odd. Same split the
+            # naming uses, so a part called ZDDP is priced as an additive.
+            is_base_oil = (part.sku_id - 1000) % 2 == 0
+            cost[part.sku_id] = BASE_OIL_COST if is_base_oil else ADDITIVE_COST
+
+    children = {}
+    for edge in bom:
+        children.setdefault(edge.parent_sku_id, []).append(edge)
+
+    for level in ("intermediate", "finished"):
+        for part in parts:
+            if part.level != level:
+                continue
+            rolled = sum(
+                cost.get(edge.child_sku_id, 0.0) * edge.qty_per
+                for edge in children.get(part.sku_id, ())
+            )
+            if level == "intermediate":
+                cost[part.sku_id] = rolled + CONVERSION_ADDER
+            else:
+                pack = part.name.rsplit(" ", 1)[-1]
+                cost[part.sku_id] = rolled + PACKAGING_COST.get(pack, 0.0)
+
+    return [
+        Part(
+            sku_id=p.sku_id, name=p.name, level=p.level,
+            lead_time_days=p.lead_time_days, safety_stock=p.safety_stock,
+            lot_policy=p.lot_policy, lot_qty=p.lot_qty,
+            unit_cost=round(cost.get(p.sku_id, 0.0), 2),
+        )
+        for p in parts
+    ]
 
 
 def _build_resources():

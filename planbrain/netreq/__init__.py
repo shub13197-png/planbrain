@@ -98,7 +98,8 @@ def run(con, demo, *, scenario_id: int = 0, source: str = "naive_replay",
             for i in range(buckets)
         ],
         lot_sizing_override=(
-            cost_lot_sizing(demo.routings) if lot_sizing == "cost_based" else None
+            cost_lot_sizing(demo.routings, demo.parts)
+            if lot_sizing == "cost_based" else None
         ),
     )
     plans = [plan for plan, _gross in planned]

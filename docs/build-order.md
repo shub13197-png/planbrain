@@ -11,10 +11,11 @@ as the historical input — where the two disagree, this file wins.
 | 4 | Forecast — statsforecast + MASE backtest | done — `94971d6` |
 | 5 | Service backtest — fill rate vs inventory | done — `2188fb8` |
 | 6 | `rccp` — capacity load | done — `4015654` |
-| **7** | **Balance the demo, add drift, close the capacity loop** | **done** |
-| 8 | `haulplan` — fairness ledger, then Timefold | not started |
-| 9 | Importer | not started |
-| 10 | UI grid | not started |
+| 7 | Balance the demo, add drift, close the capacity loop | done — `eaa629b` |
+| **8** | **Reconcile the two engines; add unit costs** | **done** |
+| 9 | `haulplan` — fairness ledger, then Timefold | not started |
+| 10 | Importer | not started |
+| 11 | UI grid | not started |
 
 ## Change: the service backtest was promoted to item 5
 
@@ -62,3 +63,18 @@ Scope, all in one pass:
 * **Close the capacity loop** with cost-based lot sizing, reusing the
   Wagner-Whitin DP already in `netreq`.
 * **Fix the closed-day release bug** that `rccp` exposed at item 6.
+
+## Change: reconciliation became item 8
+
+Two engines disagreeing about the stock implied by the same plan is a
+credibility problem, and it sat directly under the service table the positioning
+rests on. It went ahead of `haulplan`, which moved to 9.
+
+Scoped as **reconciliation, not unification**: the two engines *should* differ,
+because one computes deterministic net requirements against a forecast and the
+other replays realised demand with lost sales. The bug would be differing for
+reasons nobody can name.
+
+Unit costs came in the same item because the item 7 finding — 216 campaigns of a
+quarter's supply each — was caused by valuing inventory in machine-hours, and
+that distorted both engines.

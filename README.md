@@ -96,6 +96,14 @@ nobody.
 3. **Parameters that stay fitted rather than going stale.** A set-once reorder
    point loses 6.6 points of fill rate on intermittent demand and 8.0 on lumpy.
 
+This third claim was **scheduled for removal before the evidence existed**. The
+demo history originally had no sustained demand drift, and on that data a stale
+reorder point lost only 0.8 points — not enough to support the claim. The
+commitment, written down before the test was run, was that if adding drift
+changed nothing the claim would be **dropped, not softened**. Drift widened the
+gap to 3.3 points overall and 8.0 on lumpy demand, so it stands. A claim that
+survived a stated kill condition is worth more than one that was never at risk.
+
 **Does not claim:** better forecast accuracy across a portfolio. The numbers
 above are why.
 
@@ -106,13 +114,14 @@ above are why.
   of 450 resource-buckets stay overloaded: the plan fits on average and not
   bucket by bucket. Steering to a per-bucket limit is the CLSP, which is out of
   scope. **The service table above assumes unlimited capacity.**
-* **That capacity win is bought with 7.4x the inventory**, because holding is
-  priced by the machine-hours embedded in a unit rather than by what the material
-  costs. The result is economically consistent and operationally absurd — most
-  SKUs made once a quarter. Fixing it needs real unit costs, not a tuned
-  carrying rate.
-* **`netreq`'s lot sizing and the service simulation's policy are different
-  things**, so the inventory figures in the two reports do not reconcile.
+* **The capacity win costs working capital.** Pricing changeover into the lot
+  size trades a **31% cut in capacity load for a 16% rise in inventory value**.
+  Whether that is worth taking depends on how tight the plant is. Costs are
+  synthetic in the demo; a real deployment reads them from the system of record.
+* **`netreq`'s plan and the service simulation's policy are different things.**
+  The difference is now decomposed into named terms rather than unexplained —
+  see [`docs/reconciliation.md`](docs/reconciliation.md) — but the two engines
+  still answer different questions and are not expected to agree.
 * **Single echelon.** The plan answers *what must the plant make* and not *what
   must each depot hold*. Time-phased distribution (DRP) is deferred, not solved.
 * **No cost model.** Inventory is reported in units, not working capital.
@@ -167,6 +176,8 @@ quietly excluding the hard ones is how a portfolio average gets improved.
 | [`docs/forecast.md`](docs/forecast.md) | Model selection and MASE, including its limits |
 | [`docs/rccp.md`](docs/rccp.md) | Rough-cut capacity, and what it does not yet prove |
 | [`docs/capacity-sizing.md`](docs/capacity-sizing.md) | How the demo plant was sized, written before it was run |
+| [`docs/reconciliation.md`](docs/reconciliation.md) | Why netreq and the simulation report different stock |
+| [`docs/unit-costs.md`](docs/unit-costs.md) | How costs are derived, written before they were computed |
 | [`docs/demo.md`](docs/demo.md) | The seeded dataset |
 
 `docs/decisions.md` records rejections as prominently as decisions. Rejections
@@ -177,11 +188,12 @@ weeks.
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                                  # 334 tests
+pytest -q                                  # 358 tests
 python -m tools.check_fact_access          # the CI gate
 python -m tools.seed_demo                  # build the demo database
 python -m tools.service_report --sample 40 # the evidence above
 python -m tools.service_report --sweep     # service-vs-inventory frontier
 python -m tools.capacity_report            # can the plant make the plan?
 python -m tools.capacity_report --lot-sizing cost_based
+python -m tools.reconcile_report           # why the two engines differ
 ```

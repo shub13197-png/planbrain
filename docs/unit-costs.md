@@ -78,3 +78,48 @@ rather than units — though that second half is not in this item.
 
 If campaigns remain absurd after real costs, that is the finding and it means
 the diagnosis was wrong.
+
+---
+
+# Outcome
+
+*Appended after running. Nothing above this line was changed, and the 25%
+carrying rate was not touched.*
+
+## The costs that came out
+
+| level | n | min | median | max |
+|---|---|---|---|---|
+| raw | 40 | 90 | 350 | 350 |
+| intermediate | 40 | 32 | 279 | 542 |
+| finished | 120 | 46 | 455 | 1,006 |
+
+A 20L pack of 5W-30 comes out at 655, which is the right order of magnitude for
+the product it is imitating.
+
+## The diagnosis was right
+
+Re-running `netreq` with cost-based lot sizing, against the same balanced plant:
+
+| | lot-for-lot | cost-based, **hours** (item 7) | cost-based, **money** |
+|---|---|---|---|
+| capacity load | 16,403 h (127%) | 9,658 h (75%) | **11,258 h (87%)** |
+| overloaded buckets | 251 | 35 | 147 |
+| campaigns in 90 buckets | 5,593 | 216 | **1,688** |
+| average stock, units | 136,439 | 1,008,134 | **193,278** |
+| average stock, value | 62.8 M | — | **72.8 M** |
+
+1,688 campaigns across 160 routed SKUs is roughly **one campaign per SKU every
+8.5 days** — close to, and arrived at independently of, the 14-day cycle the
+capacity sizing assumed. The absurdity was a missing input, exactly as diagnosed,
+and not a parameter that needed tuning.
+
+The trade is now defensible and can be stated in one line: **a 31% reduction in
+capacity load for a 16% increase in working capital.** Whether that is worth
+taking depends on how tight the plant is, which is a question a planner can
+actually answer.
+
+**Still infeasible**: 87% overall with 147 of 450 resource-buckets over. Claim 2
+does not move. Cost-based lot sizing was never going to reach feasibility,
+because it never sees a per-bucket capacity limit — that was stated up front in
+`docs/rccp.md` and it held.

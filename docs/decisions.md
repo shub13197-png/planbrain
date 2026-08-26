@@ -997,3 +997,93 @@ already on the gap list as "no cost model".
 
 **Reported in full.** Publishing the 41% load reduction without the 7.4x
 inventory would be a straightforward lie.
+
+---
+
+# Build item 8 — reconciliation and unit costs
+
+## 2026-08-27 — Scoped as reconciliation, not unification
+
+**Decided.** The goal is a decomposition where every term is named and the terms
+add up. **Not** that the two engines produce the same number.
+
+**Why:** `netreq` computes deterministic net requirements against a forecast; the
+simulation replays realised demand with lost sales. They *should* differ. The
+credibility problem is differing for reasons nobody can name, directly under the
+table the positioning rests on.
+
+**Rejected: a test asserting the two figures match.** Passing it would mean one
+engine had been bent to fit the other.
+
+**Found while scoping, and worth stating plainly:** the service backtest never
+replayed `netreq`'s plan at all — it applies its own order-up-to policy. The two
+engines were never answering the same question, so comparing them directly had
+never been meaningful.
+
+## 2026-08-27 — The ladder makes the decomposition sum by construction
+
+**Decided.** Five rungs, each adding exactly one effect, so each delta *is* that
+term.
+
+**Result:** residual −0.0, or 0.0000% of plan on-hand, against a committed
+tolerance of 0.5%.
+
+**The reassuring finding:** pure netting with no safety stock and lot-for-lot
+carries 8 units against a plan of 782. Essentially **all** of netreq's planned
+inventory is a deliberate configured choice — 453 safety stock, 322 lot round-up
+— rather than an artefact of the algorithm.
+
+**The per-class finding, which the aggregate hides:** on intermittent demand the
+plan is nearly right (forecast error +72 on a plan of 968) and its stock is
+overwhelmingly safety stock. On smooth demand the plan is furthest out (+725
+forecast error, +414 truncation) because smooth series carry the drift. Reporting
+per class was committed before the run for exactly this reason.
+
+## 2026-08-27 — A real bug, found by cross-checking two implementations
+
+**Found.** `simulate.replay` silently lost every order placed with a **zero lead
+time**. The order entered the pipeline at bucket `t` after that bucket's arrivals
+had already been collected, so it was never received — ten units ordered, zero
+delivered, fill rate zero, no error anywhere.
+
+**Found how:** the ladder's fixed-schedule replay and `simulate.replay` are
+separate implementations of the same physics, so feeding the simulation the same
+schedule at zero lead time must reproduce the ladder's rung. It did not.
+
+**Blast radius: none published.** Every demo SKU has a lead time of at least one
+day and the service backtest defaults to seven. Verified rather than assumed.
+
+**Why it matters anyway:** it was waiting for the first same-day-delivery item a
+customer configured, and it was invisible to both engines individually.
+
+## 2026-08-27 — Unit costs derived from a rule committed in advance
+
+**Decided.** A standard cost roll-up: raws priced by type, intermediates from
+their BOM plus a conversion adder, finished goods plus packaging by pack size.
+Changeover priced at an hourly cost of capacity time. All committed in
+`docs/unit-costs.md` in its own commit before any cost was computed.
+
+**The 25% carrying rate was not touched.** Explicitly out of bounds. Adjusting it
+to fix campaign length would be fitting a parameter to a desired answer.
+
+**Result: the item 7 diagnosis was right.** Campaigns went from 216 (a quarter's
+supply each, absurd) to 1,688 — about one per SKU every 8.5 days, arrived at
+independently and close to the 14-day cycle capacity sizing had assumed. Stock
+fell from 1,008,134 units to 193,278.
+
+**The trade is now stateable:** a 31% reduction in capacity load for a 16%
+increase in working capital.
+
+**Claim 2 still does not move.** 87% overall utilisation with 147 of 450
+resource-buckets over. Cost-based lot sizing never sees a per-bucket capacity
+limit and was never going to reach feasibility — stated up front in
+`docs/rccp.md`, and it held.
+
+## 2026-08-27 — Claim 3's kill condition is recorded, not just its result
+
+**Decided.** The README states that claim 3 was scheduled for removal before the
+evidence existed, and what changed.
+
+**Why:** a claim that survived a stated kill condition is worth more than one
+that was never at risk. Recording only the surviving result would discard the
+part that makes it credible.

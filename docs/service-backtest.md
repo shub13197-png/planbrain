@@ -163,6 +163,9 @@ resource. None are in scope, and multi-echelon is "later if ever".
 * **No cost model.** The table reports units of stock, not money. Turning
   inventory into working capital needs unit costs, which come from the customer's
   system of record.
+* **`netreq`'s plan and this simulation's policy are different things**, and the
+  difference is now decomposed rather than mysterious — see
+  `docs/reconciliation.md`. Reconciling them found a real bug in the replay.
 * **Every policy here can order whatever it likes.** None of these numbers
   reflect capacity. `rccp` (item 6) shows the demo plan is infeasible even after
   balancing, so the service figures above are what the plant would achieve *if
