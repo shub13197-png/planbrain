@@ -52,15 +52,6 @@ class WorkingCalendar:
     def is_working(self, day) -> bool:
         return day.weekday() in self.working_weekdays
 
-    def describe(self) -> str:
-        if self.is_continuous:
-            return "continuous, 7 days"
-        return f"{len(self.working_weekdays)}-day week, closed " + ", ".join(
-            _NAMES[d] for d in sorted(ALL_WEEKDAYS - self.working_weekdays)
-        )
-
-
-_NAMES = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
 #: The demo plant: six days, closed Sunday.
 SIX_DAY_WEEK = WorkingCalendar(frozenset(ALL_WEEKDAYS - {SUNDAY}))

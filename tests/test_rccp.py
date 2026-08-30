@@ -198,7 +198,10 @@ def test_run_writes_load_at_the_capacity_grain(planned, demo):
 def test_the_report_says_whether_the_plan_is_feasible(planned, demo):
     """A row count would not say whether the plant can actually make the plan."""
     report = rccp.run(planned, demo)
-    assert isinstance(report["feasible"], bool)
+    # Behaviour, not type: feasible must agree with the overload lists it
+    # summarises, or the headline verdict and the detail could disagree.
+    any_over = any(d["overloaded_buckets"] for d in report["resources"].values())
+    assert report["feasible"] is not any_over
     for detail in report["resources"].values():
         assert set(detail) == {
             "load_hours", "capacity_hours", "utilisation",

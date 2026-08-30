@@ -49,14 +49,6 @@ class Ladder:
         return self.rungs["with_truncation"]
 
     @property
-    def observed_gap(self) -> float:
-        return self.plan_on_hand - self.replayed_on_hand
-
-    @property
-    def explained_gap(self) -> float:
-        return -(self.terms["forecast_error"] + self.terms["stockout_truncation"])
-
-    @property
     def cross_check_residual(self) -> float:
         """Ladder rung 4 against the same rung computed by a different engine.
 
@@ -92,19 +84,23 @@ def replay_schedule(receipts: list, demand: list, *, opening: float,
 
 
 def build_ladder(*, key, pattern, forecast, actual, opening, lead_time_days,
-                 safety_stock, lot_sizing, plan_item, item_factory) -> Ladder:
+                 safety_stock, lot_sizing) -> Ladder:
     """Walk the five rungs for one series.
 
-    ``plan_item`` and ``item_factory`` are injected rather than imported so this
-    module stays a pure function of its arguments and the netting engine can be
-    stubbed in tests.
+    The netting engine is imported directly. An earlier version took ``plan_item``
+    and ``item_factory`` as parameters "so it could be stubbed in tests"; nothing
+    ever stubbed them, and injection that no caller uses is a seam that has to be
+    read and understood for no benefit.
     """
+    from ..netreq.core import Item, plan_item
     from .terms import lot_for_lot
 
     def _plan(ss, ls):
-        return plan_item(item_factory(
+        return plan_item(Item(
+            sku_id=key[0], loc_id=key[1],
             lead_time_days=lead_time_days, on_hand=opening, safety_stock=ss,
             lot_sizing=ls, gross_req=list(forecast),
+            scheduled_receipt=[0.0] * len(forecast),
         ))
 
     pure = _plan(0.0, lot_for_lot())

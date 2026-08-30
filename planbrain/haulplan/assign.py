@@ -48,10 +48,6 @@ class Plan:
     assignments: list = field(default_factory=list)
     unassigned: list = field(default_factory=list)
 
-    @property
-    def assigned_count(self) -> int:
-        return sum(1 for a in self.assignments if a.truck_id is not None)
-
 
 def feasible_trucks(trip, trucks, busy) -> list:
     """Trucks that could physically take this trip.

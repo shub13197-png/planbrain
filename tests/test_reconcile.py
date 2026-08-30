@@ -5,6 +5,8 @@ the difference has a name and the names add up. A test demanding agreement would
 be wrong, and passing it would mean one engine had been bent to fit the other.
 """
 
+import dataclasses
+
 import pytest
 
 from planbrain import reconcile
@@ -213,7 +215,10 @@ def test_a_residual_would_be_reported_not_hidden(report):
     """The tolerance exists for float noise over 90 buckets, not to absorb
     unexplained difference. If it is ever breached, this must be visible."""
     assert RESIDUAL_TOLERANCE <= 0.01
-    assert isinstance(report.residual, float)
+    # Behaviour, not type: a residual outside tolerance must flip the verdict,
+    # so a breach cannot pass unnoticed.
+    breached = dataclasses.replace(report, residual_share=RESIDUAL_TOLERANCE * 2)
+    assert not breached.within_tolerance
 
 
 def test_safety_stock_and_lot_sizing_explain_the_plans_own_stock(report):

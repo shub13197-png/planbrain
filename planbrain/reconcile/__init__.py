@@ -18,7 +18,6 @@ from dataclasses import dataclass
 
 from ..forecast import classify, make_forecaster
 from ..forecast.metrics import ScoredMean, scored_mean
-from ..netreq.core import plan_item
 from ..simulate.policies import demand_statistics
 from .core import (
     RUNGS,
@@ -29,7 +28,6 @@ from .core import (
     simulate_schedule,
     total_change,
 )
-from .terms import item_factory, lot_for_lot
 
 __all__ = [
     "Ladder",
@@ -109,8 +107,6 @@ def reconcile(con, demo, *, scenario_id: int = 0, keys=None,
             lead_time_days=lead_time,
             safety_stock=part.safety_stock,
             lot_sizing=_lot_sizing_for(part),
-            plan_item=plan_item,
-            item_factory=item_factory(key[0], key[1]),
         ))
 
     if unmatched:

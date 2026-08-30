@@ -16,9 +16,10 @@ as the historical input — where the two disagree, this file wins.
 | 9 | `haulplan` — fairness ledger + greedy assignment | done — `c18e5e5` |
 | 10 | Fleet sized from the freight profile | done — `5704356` |
 | **11** | **Fix the infeasibility framing + capacity sensitivity** | **done** |
-| **12** | **Importer** | next |
-| **13** | **README, demo, manual code audit** | after |
+| 12 | Importer | done — `f3819a1` |
+| **13** | **README, demo, manual code audit** | **done** |
 | 14 | UI grid | not started |
+| — | CLSP, DRP, Timefold | deferred with reason; see the docs for each |
 
 ## Change: the service backtest was promoted to item 5
 

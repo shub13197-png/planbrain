@@ -1,0 +1,7 @@
+services:
+  planbrain:
+    build: .
+    # Everything runs in-process against SQLite. There is no server to wait for
+    # and no database container to orchestrate -- the demo is a computation, not
+    # a deployment, and pretending otherwise would be theatre.
+    command: python -m tools.demo

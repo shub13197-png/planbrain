@@ -6,9 +6,9 @@ machinery for producing the table below.
 > ## Read this first: these numbers assume production is unconstrained
 >
 > Every fill rate on this page assumes the plant makes whatever the policy
-> orders. **It cannot.** `rccp` reports the same plan as **infeasible in 147 of
-> 450 resource-buckets**, at 87% overall utilisation, with individual buckets
-> down to 21% of the capacity their load requires.
+> orders. **It cannot.** `rccp` reports the same plan as **infeasible in 139 of
+> 450 resource-buckets**, at 85% overall utilisation, with individual buckets
+> well below the capacity their load requires.
 >
 > A capacity-capped sensitivity is reported at the bottom of this page. The
 > honest headline is a **range**, not the single number in the table below.

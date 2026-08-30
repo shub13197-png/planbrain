@@ -20,27 +20,30 @@ window under four policies and measures what service each achieved and what
 stock it had to carry to achieve it.
 
 ```bash
-python -m tools.service_report --sample 40
+python -m tools.service_report --sample 0     # the whole portfolio
 ```
 
-**40 of 242 series, 90-day holdout, 7 days safety stock:**
+**All 222 series, 90-day holdout, 7 days safety stock.** Whole portfolio, not a
+sample — an earlier version of this table quoted a 40-series sample and one of
+its conclusions did not survive the full run. See *What changed when we stopped
+sampling*, below.
 
 | policy | fill rate | avg on-hand | units short |
 |---|---|---|---|
-| fitted forecast (this tool) | **97.9%** | 1,346 | 6,674 |
-| reorder point, tuned | 95.2% | 793 | 25,228 |
-| reorder point, stale | 91.9% | 786 | 36,975 |
-| naive zero forecast | 77.8% | 269 | 40,067 |
+| fitted forecast (this tool) | **97.2%** | 1,301 | 26,034 |
+| reorder point, tuned | 95.7% | 880 | 109,154 |
+| reorder point, stale | 93.4% | 870 | 192,687 |
+| naive zero forecast | 76.1% | 272 | 237,101 |
 
 ### Read that honestly
 
-**At portfolio level this tool buys about 2.7 points of fill rate over a
-continuously tuned spreadsheet rule, for roughly 70% more inventory.** That is a
+**At portfolio level this tool buys about 1.5 points of fill rate over a
+continuously tuned spreadsheet rule, for roughly 48% more inventory.** That is a
 real gain and not a large one, and whether it is worth the working capital
 depends on what a stockout costs the customer — which this repo cannot price.
 
 Against a **stale** reorder point — parameters set once and never revisited,
-which is what most SMEs actually run — the gap is 6.0 points.
+which is what most SMEs actually run — the gap is 2.3 points.
 
 If forecast accuracy across a whole portfolio were the pitch, the pitch would be
 weak. It is not the pitch.
@@ -49,23 +52,33 @@ weak. It is not the pitch.
 
 Fill rate / average on-hand, by demand pattern:
 
-| policy | smooth | erratic | intermittent | **lumpy** |
+| policy | smooth | erratic | **intermittent** | lumpy |
 |---|---|---|---|---|
-| fitted forecast | 99.2% / 1,910 | 98.8% / 1,297 | 95.8% / 731 | **97.1% / 1,021** |
-| reorder point, tuned | 96.3% / 725 | 96.9% / 671 | 93.9% / 621 | 94.0% / 1,040 |
-| reorder point, stale | 96.7% / 783 | 97.9% / 867 | 87.3% / 583 | 86.0% / 898 |
-| naive zero | 95.9% / 509 | 83.3% / 151 | 66.0% / 90 | **58.0% / 106** |
+| fitted forecast | 99.6% / 1,986 | 98.2% / 1,236 | **97.3% / 948** | 92.8% / 898 |
+| reorder point, tuned | 96.9% / 915 | 95.9% / 796 | 95.6% / 849 | **93.7% / 939** |
+| reorder point, stale | 97.1% / 952 | 95.4% / 834 | 91.1% / 828 | 89.3% / 846 |
+| naive zero | 94.1% / 541 | 89.7% / 274 | **63.0% / 144** | **55.1% / 79** |
 
-**Lumpy demand is where this tool is clearly ahead** — 97.1% fill on 1,021 units
-against a tuned reorder point's 94.0% on 1,040: better service on slightly less
-stock. Rare, large, unpredictable orders are what a spreadsheet handles worst,
-and they are common in industrial distribution.
+**Intermittent demand is where this tool is ahead** — 97.3% fill against a tuned
+reorder point's 95.6%, bought with about 12% more stock.
 
-**Staleness is the other clear gap.** A set-once reorder point loses 6.6 points
-on intermittent demand and 8.0 on lumpy against a continuously tuned one. That
-is the evidence for claim 3, and it only appeared once the demo carried
-sustained demand drift — on a stationary history the gap was 0.8 points and the
-claim was not supportable.
+### What changed when we stopped sampling
+
+An earlier version of this README, computed on a 40-series sample, claimed lumpy
+demand was where the tool was clearly ahead. **On the full portfolio it is not.**
+A tuned reorder point reaches 93.7% on lumpy against this tool's 92.8% — better
+service, on about 5% more stock. On a service-per-unit-of-stock basis the two
+are close to indistinguishable.
+
+That correction is left in rather than quietly overwritten, because the sample
+size was the difference and a reader is entitled to know a published claim did
+not survive a larger run. Everything on this page is now the whole portfolio.
+
+**Staleness is the other real gap.** A set-once reorder point loses 4.5 points on
+intermittent demand and 4.4 on lumpy against a continuously tuned one. That is
+the evidence for claim 3, and it only appeared once the demo carried sustained
+demand drift — on a stationary history the gap was 0.8 points and the claim was
+not supportable.
 
 ### The result that settles a methodological argument
 
@@ -73,8 +86,9 @@ The bottom row is not a straw man. **A forecast of zero is close to optimal on
 MASE for intermittent demand** — it is right on every quiet day and wrong only
 on the few days that matter. Standard forecast-accuracy metrics rank it well.
 
-It is also a policy that barely orders anything: **70.6% fill on intermittent
-demand, 48.1% on lumpy, and 4.4% with no safety stock.**
+It is also a policy that barely orders anything: **63.0% fill on intermittent
+demand and 55.1% on lumpy**, against 97.3% and 92.8% for the fitted forecast.
+This is the one comparison on the page that is not close.
 
 Accuracy was never the objective. That is why this repo measures service against
 inventory instead, and why it publishes both numbers together — a policy hits
@@ -83,51 +97,85 @@ nobody.
 
 ---
 
-## What this claims, and what it does not
+## What this claims, ranked by how well evidenced each claim is
 
-**Claims:**
+Four claims of quite different strength. Presenting them as four equal bullets
+would overstate the weak ones.
 
-1. **Lumpy and intermittent demand.** Strong evidence, above.
-2. **Capacity awareness.** A reorder point has no concept of a blender being
-   full. `rccp` loads the plan onto resources and reports whether the plant can
-   make it. **It detects infeasibility; it does not yet produce feasible plans** —
-   pricing changeover into the lot size cuts capacity load 41% and still leaves
-   35 of 450 resource-buckets over. See the gaps.
-3. **Parameters that stay fitted rather than going stale.** A set-once reorder
-   point loses 6.6 points of fill rate on intermittent demand and 8.0 on lumpy.
-4. **Detecting a mis-set changeover budget.** The demo plant is provisioned for
-   1,029 campaigns over the horizon; its own cost structure calls for 1,680 — a
-   **57% shortfall in changeover hours**, invisible in any utilisation report
-   because aggregate capacity looks adequate. Requires both a routing model and
-   a lot-sizing economics model to compare, which a spreadsheet has neither of.
-   See [`docs/rccp.md`](docs/rccp.md).
+### Strong — measured on the full portfolio
 
-   Stated separately from claim 2 on purpose. It does **not** explain the
-   infeasibility — correcting the budget entirely removes only 9 of 147
-   overloaded buckets.
+**1. Intermittent demand.** 97.3% fill against a tuned reorder point's 95.6%
+across 66 series, bought with about 12% more stock. The supporting result is
+stronger than the gap: a forecast of zero, which is close to optimal on standard
+accuracy metrics for this class, delivers **63.0%**. That is not a close call and
+it settles what the objective should be.
 
-This third claim was **scheduled for removal before the evidence existed**. The
-demo history originally had no sustained demand drift, and on that data a stale
-reorder point lost only 0.8 points — not enough to support the claim. The
-commitment, written down before the test was run, was that if adding drift
-changed nothing the claim would be **dropped, not softened**. Drift widened the
-gap to 3.3 points overall and 8.0 on lumpy demand, so it stands. A claim that
-survived a stated kill condition is worth more than one that was never at risk.
+### Solid, and smaller than it sounds
 
-**Does not claim:** better forecast accuracy across a portfolio. The numbers
-above are why.
+**2. Parameters that stay fitted rather than going stale.** A set-once reorder
+point loses **4.5 points on intermittent demand and 4.4 on lumpy** against a
+continuously tuned one. This claim was **scheduled for removal before the
+evidence existed** — on a stationary demand history the gap was 0.8 points and
+would not have supported it. The commitment, written down before the test ran,
+was that it would be dropped rather than softened if adding drift changed
+nothing. Drift changed it, so it stands.
+
+### Scoped to detection, not correction
+
+**3. Capacity awareness.** A reorder point has no concept of a blender being
+full. `rccp` loads the plan onto resources and reports **85% overall utilisation
+with 139 of 450 resource-buckets over** — the plan fits on average and clumps in
+time. It **detects infeasibility and does not produce feasible plans**. Steering
+to a per-bucket limit is the CLSP, out of scope and said so in advance.
+
+### Quantified, real, and the smallest of the four
+
+**4. Detecting a mis-set changeover budget.** The demo plant is provisioned for
+changeover on a 14-day campaign cycle while its own cost structure calls for one
+nearer 9 days. Invisible in a utilisation report because aggregate capacity
+looks adequate, and it needs both a routing model and a lot-sizing economics
+model to see. It explains **fewer than one overloaded bucket in ten**, so it is
+a capability rather than an explanation.
+
+**Not claimed:** better forecast accuracy across a portfolio. The numbers above
+are why — and see the correction on lumpy demand.
+
+## The most useful thing in this repo is a check that failed
+
+The reconciliation between the planning engine and the service simulation
+reported a residual of **exactly −0.0** across four named terms. It looked like
+strong evidence. It was worthless.
+
+Every term was defined as a difference between adjacent rungs of a ladder, so
+they summed to the gap as an **algebraic identity**. Five random numbers produce
+the same zero — there is a test that does exactly that. No injected error could
+move it, because perturbing a rung changed both sides equally and they cancelled.
+
+The replacement is a **cross-engine** residual: the same quantity computed by two
+separately written implementations. It moves proportionally with an injected
+error, catches a one-bucket schedule shift, and had already caught a real bug —
+an order placed at zero lead time that was silently never delivered.
+
+**Both residuals are still reported side by side, labelled.** Quietly dropping
+the weak one would hide that an earlier result had been overstated.
+
+That is the standard the rest of these numbers are held to. Every headline figure
+in this repo had its rule and its threshold committed in a **separate commit
+before the run** — verifiable in `git log` — precisely so that a rule written
+after seeing a result cannot masquerade as one written before it.
 
 ## Gaps, stated plainly
 
 * **Capacity checking detects, it does not yet fix.** Pricing changeover into
-  the lot size takes the demo plan from 127% to 75% overall utilisation, but 35
-  of 450 resource-buckets stay overloaded: the plan fits on average and not
-  bucket by bucket. Steering to a per-bucket limit is the CLSP, which is out of
-  scope. **The service table above assumes unlimited capacity.**
+  the lot size cuts capacity load substantially, but 139 of 450 resource-buckets
+  stay overloaded: the plan fits on average and not bucket by bucket. Steering
+  to a per-bucket limit is the CLSP, which is out of scope. **The headline
+  service table assumes unlimited capacity; a capacity-capped range is in
+  [`docs/service-backtest.md`](docs/service-backtest.md).**
 * **The capacity win costs working capital.** Pricing changeover into the lot
-  size trades a **31% cut in capacity load for a 16% rise in inventory value**.
-  Whether that is worth taking depends on how tight the plant is. Costs are
-  synthetic in the demo; a real deployment reads them from the system of record.
+  size trades capacity load against inventory value. Whether that is worth
+  taking depends on how tight the plant is. Costs are synthetic in the demo; a
+  real deployment reads them from the system of record.
 * **`netreq`'s plan and the service simulation's policy are different things.**
   The difference is now decomposed into named terms rather than unexplained —
   see [`docs/reconciliation.md`](docs/reconciliation.md) — but the two engines
@@ -189,6 +237,7 @@ quietly excluding the hard ones is how a portfolio average gets improved.
 | [`docs/reconciliation.md`](docs/reconciliation.md) | Why netreq and the simulation report different stock |
 | [`docs/haulplan.md`](docs/haulplan.md) | The long-haul fairness ledger, and an ordering bug it caught |
 | [`docs/constants.md`](docs/constants.md) | Every committed constant, which item set it, and what it must agree with |
+| [`docs/audit.md`](docs/audit.md) | Manual code audit: what was removed and what was left alone |
 | [`docs/unit-costs.md`](docs/unit-costs.md) | How costs are derived, written before they were computed |
 | [`docs/demo.md`](docs/demo.md) | The seeded dataset |
 
@@ -199,8 +248,15 @@ weeks.
 ## Running it
 
 ```bash
+docker compose up                          # the whole pipeline, ~1 minute
+```
+
+or without Docker:
+
+```bash
 pip install -e ".[dev]"
-pytest -q                                  # 421 tests
+python -m tools.demo                       # the same end-to-end run
+pytest -q                                  # 459 tests
 python -m tools.check_fact_access          # the CI gate
 python -m tools.seed_demo                  # build the demo database
 python -m tools.service_report --sample 40 # the evidence above
@@ -208,4 +264,32 @@ python -m tools.service_report --sweep     # service-vs-inventory frontier
 python -m tools.capacity_report            # can the plant make the plan?
 python -m tools.capacity_report --lot-sizing cost_based
 python -m tools.reconcile_report           # why the two engines differ
+python -m tools.import_data --check data/  # validate your own spreadsheets
 ```
+
+## Bringing your own data
+
+The importer is the on-ramp, and `--check` validates without writing anything:
+
+```bash
+python -m tools.import_data --check /path/to/spreadsheets/
+```
+
+Drop `parts`, `bom`, `routings`, `fleet` and `history` in as `.csv` or `.xlsx` —
+any subset works. Every problem is reported at once, each naming the file, the
+row as your spreadsheet numbers it, the column and the value:
+
+```
+parts.csv row 3, column 'lead_time_days': should be a whole number (got 'soon')
+history.csv row 2, column 'bucket_date': should be a date as YYYY-MM-DD
+                                         (other formats are ambiguous)
+```
+
+Thousands separators, currency symbols and integer columns that arrived as
+floats are handled rather than pushed back at you. Ambiguous dates are refused
+rather than guessed: `03/04/2026` is April in India and March in America, and
+guessing wrong shifts a demand history by a month with nothing failing.
+
+Nothing is written unless the whole set is clean. A partial import leaves a
+database that looks populated and is missing rows nobody finds until a plan
+comes out wrong.
