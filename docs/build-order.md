@@ -13,7 +13,7 @@ as the historical input — where the two disagree, this file wins.
 | 6 | `rccp` — capacity load | done — `4015654` |
 | 7 | Balance the demo, add drift, close the capacity loop | done — `eaa629b` |
 | **8** | **Reconcile the two engines; add unit costs** | **done** |
-| 9 | `haulplan` — fairness ledger, then Timefold | not started |
+| **9** | **`haulplan` — fairness ledger + greedy assignment** | **done (solver deferred)** |
 | 10 | Importer | not started |
 | 11 | UI grid | not started |
 

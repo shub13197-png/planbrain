@@ -156,3 +156,92 @@ finding.
 * **No cost objective.** Fairness and feasibility only. Balancing fairness
   against distance cost is exactly the trade a solver is for, and it comes after
   the ledger is trustworthy.
+
+---
+
+# Outcome
+
+*Appended after running. Nothing above this line was changed.*
+
+## Greedy assignment on the demo fleet
+
+169 trips over a 90-bucket horizon, 65 of them long-haul, across 12 trucks.
+
+| | Jain index | verdict | spread |
+|---|---|---|---|
+| opening ledger | 0.9169 | acceptable | 27,409 km |
+| after greedy | **0.9550** | **fair** | 21,949 km |
+
+The ledger does what it exists to do: an acceptable-but-drifting fleet is pulled
+back inside the committed fair threshold, and the gap between the busiest and
+quietest truck narrows by 5,460 km.
+
+## The first version was wrong, and the demo caught it
+
+The obvious greedy rule — process trips in order, give each to the truck
+furthest behind — produced **J = 0.9194**, a movement of 0.0025 that is
+indistinguishable from noise. Every individual assignment was correct by the
+stated rule. The fault was in the **order**.
+
+Trips were processed by id, which grouped them by depot: four short Delhi runs,
+four medium Jaipur runs, then five long Ludhiana runs. The short runs were
+assigned first and consumed exactly the trucks furthest behind, so by the time
+the long-haul trips came up, the only feasible trucks were the ones already
+ahead. **13 of 65 long-haul trips were assigned, and they went to the wrong
+trucks.**
+
+Fixed by giving long-haul trips first claim within each bucket, since long-haul
+is what fairness is measured on. Long-haul assignment went from 13 to **65 of
+65**, and the index from noise to a real movement.
+
+Worth naming the shape of this: nothing crashed, no assignment violated the
+rule, and the report would have read as a successful fairness run. It was
+visible only because the index was compared against a committed threshold rather
+than reported on its own.
+
+## A second finding: half the fleet cannot carry a full load
+
+104 of 169 trips were assigned. All 65 unassigned trips give the same reason —
+*every capable truck is already committed in this bucket* — and the cause is
+fleet composition, not the assignment rule:
+
+| truck capacity | count |
+|---|---|
+| 9,000 kg | **6** |
+| 16,000 kg | 4 |
+| 25,000 kg | 2 |
+
+The standard truckload is 12,000 kg, so **six of twelve trucks are structurally
+excluded from every full load** and can only take remainder trips. The effective
+fleet for full-load work is six trucks, not twelve.
+
+Two independently committed rules collided to produce this: truck capacities
+were generated at item 2, the 12,000 kg truckload at item 9, and neither knew
+about the other. Unlike the campaign-length convergence, this collision is
+unhelpful — but it is exactly the class of thing a real fleet suffers from, and
+the tool surfaced it rather than hiding it in an average.
+
+**Not fixed by adjusting the truckload size.** That would be tuning a committed
+input to make an output look better, which is the error this whole discipline
+exists to prevent. It is reported as a finding.
+
+## Timefold: not started, and the ledger says why
+
+The committed order of work was ledger, then greedy, then a solver only once the
+ledger is right and demonstrably explainable.
+
+The ledger is now right and the greedy result is explainable in one sentence a
+driver would accept. But the demo's binding constraint is **fleet composition
+and bucket capacity**, not assignment quality — 65 trips have no feasible truck
+at all, and no optimiser can assign a trip to a truck that cannot carry it.
+
+Running Timefold against this dataset would optimise the 104 assignable trips
+and report an improvement over a baseline that was never the limiting factor.
+**The honest next step is a demo fleet that can actually carry its own freight**,
+the same way capacity sizing had to precede any conclusion about `rccp`.
+
+Recorded in advance and worth restating: the expectation was that greedy might
+capture most of the available fairness. On this data it reaches 0.9550 against a
+committed fair threshold of 0.95, so there is very little headroom left for a
+solver to claim on fairness alone. Where a solver would earn its place is
+trading fairness against distance cost, which this pass does not attempt.

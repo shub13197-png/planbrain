@@ -137,6 +137,43 @@ def test_every_assignment_carries_a_reason_a_driver_would_accept():
 # does the greedy rule actually improve fairness?
 # --------------------------------------------------------------------------
 
+def test_long_haul_trips_get_first_claim_on_the_fair_trucks():
+    """Regression for the ordering flaw the demo exposed.
+
+    The first version processed trips by id, so short-haul runs were assigned
+    first and consumed exactly the trucks furthest behind. By the time the
+    long-haul trips came up, the only feasible trucks were the ones already
+    ahead -- and fairness is measured on long-haul kilometres, so the index
+    barely moved while every trip looked correctly assigned.
+
+    Truck 1 is furthest behind and there is one short and one long trip in the
+    bucket. Truck 1 must get the LONG one.
+    """
+    trucks = _fleet(2)
+    ledger = Ledger.opening({1: 0.0, 2: 50_000.0})
+    short = Trip(900, 0, 80.0, 1000.0, is_long_haul=False)
+    long_run = Trip(901, 0, 600.0, 1000.0, is_long_haul=True)
+
+    plan = assign([short, long_run], trucks, ledger)
+    by_trip = {a.trip_id: a.truck_id for a in plan.assignments}
+    assert by_trip[901] == 1, "the truck furthest behind must get the long haul"
+    assert by_trip[900] == 2
+
+
+def test_ordering_does_not_depend_on_the_order_trips_are_passed_in():
+    """The rule is stated, not incidental to input order."""
+    trucks = _fleet(2)
+    short = Trip(900, 0, 80.0, 1000.0, is_long_haul=False)
+    long_run = Trip(901, 0, 600.0, 1000.0, is_long_haul=True)
+
+    def run(trips):
+        ledger = Ledger.opening({1: 0.0, 2: 50_000.0})
+        plan = assign(trips, trucks, ledger)
+        return {a.trip_id: a.truck_id for a in plan.assignments}
+
+    assert run([short, long_run]) == run([long_run, short])
+
+
 def test_greedy_improves_fairness_on_a_skewed_opening_ledger():
     """The result the ledger exists to produce."""
     trucks = _fleet(4)

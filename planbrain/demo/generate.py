@@ -90,6 +90,10 @@ class Truck:
     truck_id: int
     plate: str
     capacity_kg: float
+    #: Every demo truck is on the road. Off-road maintenance would change the
+    #: fairness result, and the demo fleet rule committed in docs/haulplan.md
+    #: does not include it, so it is not invented here.
+    available: bool = True
 
 
 @dataclass
@@ -124,6 +128,11 @@ class DemoDataset:
     drifting_series: list = field(default_factory=list)
     #: Sized hours per full working day, per resource. See docs/capacity-sizing.md.
     resource_day_hours: dict = field(default_factory=dict)
+    #: Dispatch trips over the forward horizon. See docs/haulplan.md.
+    trips: list = field(default_factory=list)
+    #: Opening year-to-date long-haul km per truck. A scalar position, like
+    #: opening stock: in production it comes from the system of record.
+    truck_ytd_long_haul_km: dict = field(default_factory=dict)
 
 
 def build_demo(seed: int = 7) -> DemoDataset:
@@ -163,6 +172,8 @@ def build_demo(seed: int = 7) -> DemoDataset:
     demo.resource_day_hours = _size_resources(demo)
     demo.facts[("fact_capacity", "capacity_avail_hours")] = _build_capacity(rng, demo)
     demo.stock_on_hand = _build_stock(rng, demo)
+    demo.trips = _build_trips(rng, demo)
+    demo.truck_ytd_long_haul_km = _build_fleet_ledger(rng, demo)
     return demo
 
 
@@ -457,6 +468,63 @@ def _build_receipts(rng, demo):
                 float(rng.choice([5000, 10000, 20000, 24000])),
             ))
     return facts
+
+
+#: docs/haulplan.md, committed before generation. Road distances from Bhiwadi.
+DEPOT_DISTANCE_KM = {11: 80.0, 12: 180.0, 13: 420.0}
+LONG_HAUL_KM = 250.0
+TRUCKLOAD_KG = 12_000.0
+KG_PER_LITRE = 0.9
+REPLENISH_EVERY_DAYS = 7
+
+#: Opening ledger band. Deliberately skewed -- a fairness ledger exists because
+#: fleets drift out of balance, and a level demo would have nothing to correct.
+YTD_BAND_KM = (8_000.0, 46_000.0)
+
+
+def _build_trips(rng, demo):
+    """Dispatch trips from plant to depots over the forward horizon.
+
+    Demand each depot takes, converted to truckloads on a weekly replenishment
+    cadence. Distances and the long-haul threshold are committed in
+    docs/haulplan.md; nothing here is derived from a fairness outcome.
+    """
+    from planbrain.haulplan.ledger import Trip
+
+    horizon_days = (demo.horizon_end - demo.horizon_start).days + 1
+    recent_cutoff = demo.horizon_start - timedelta(days=horizon_days)
+
+    litres = {}
+    for fact in demo.facts[("fact_supply_demand", "demand_actual")]:
+        if fact.bucket_date >= recent_cutoff:
+            litres[fact.keys[1]] = litres.get(fact.keys[1], 0.0) + fact.qty
+
+    trips, trip_id = [], 900
+    for bucket in range(0, horizon_days, REPLENISH_EVERY_DAYS):
+        day = demo.horizon_start + timedelta(days=bucket)
+        if not demo.calendar.is_working(day):
+            continue
+        for loc_id, distance in sorted(DEPOT_DISTANCE_KM.items()):
+            weekly_kg = litres.get(loc_id, 0.0) * KG_PER_LITRE * REPLENISH_EVERY_DAYS / horizon_days
+            loads = int(weekly_kg // TRUCKLOAD_KG)
+            remainder = weekly_kg - loads * TRUCKLOAD_KG
+            for _ in range(loads):
+                trips.append(Trip(trip_id, bucket, distance, TRUCKLOAD_KG,
+                                  distance >= LONG_HAUL_KM))
+                trip_id += 1
+            if remainder > TRUCKLOAD_KG * 0.2:
+                trips.append(Trip(trip_id, bucket, distance, round(remainder, 1),
+                                  distance >= LONG_HAUL_KM))
+                trip_id += 1
+    return trips
+
+
+def _build_fleet_ledger(rng, demo):
+    """Opening year-to-date long-haul kilometres, deliberately uneven."""
+    return {
+        truck.truck_id: round(rng.uniform(*YTD_BAND_KM), 0)
+        for truck in demo.trucks
+    }
 
 
 def _build_stock(rng, demo):

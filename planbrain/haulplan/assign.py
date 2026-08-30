@@ -17,8 +17,17 @@ furthest behind* -- and explainability is worth more here than optimality. A
 driver who does not believe the allocation is fair will not be persuaded by a
 solver's objective value.
 
-Trips are processed in a stated order (bucket, then trip id) so the result is
-deterministic and a rerun does not reshuffle the fleet.
+**Long-haul trips are processed first within a bucket.** This is not cosmetic
+ordering, and the first version got it wrong. Processing by trip id meant the
+short-haul runs were assigned first, consuming exactly the trucks furthest
+behind, so by the time the long-haul trips came up the only feasible trucks were
+the ones already ahead. Fairness is measured on long-haul kilometres, so the
+long-haul trips must have first claim on the fair trucks. On the demo this took
+long-haul assignment from 13 trips to 65 and the Jain index from a rounding
+error to a real movement.
+
+After that, the order is (bucket, long-haul first, then trip id) so the result
+is deterministic and a rerun does not reshuffle the fleet.
 """
 
 from dataclasses import dataclass, field
@@ -84,7 +93,7 @@ def assign(trips, trucks, ledger) -> Plan:
     plan = Plan()
     busy = set()
 
-    for trip in sorted(trips, key=lambda t: (t.bucket, t.trip_id)):
+    for trip in sorted(trips, key=lambda t: (t.bucket, not t.is_long_haul, t.trip_id)):
         candidates = feasible_trucks(trip, trucks, busy)
         if not candidates:
             plan.unassigned.append(
