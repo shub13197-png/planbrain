@@ -251,12 +251,33 @@ def test_write_also_checks_the_grain(con):
         )
 
 
-def test_fleet_table_reports_itself_as_reserved(con):
-    """No measure of grain 'fleet' exists until haulplan defines the ledger."""
-    assert con.execute(
-        "SELECT count(*) FROM measure WHERE grain = 'fleet'"
-    ).fetchone()[0] == 0
+def test_the_fleet_grain_now_has_its_measures(con):
+    """Reserved with an empty measure set from item 2 until item 9 defined the
+    ledger. They are flows: the cumulative is summed on read, never stored."""
+    grains = dict(con.execute(
+        "SELECT measure, grain FROM measure WHERE grain = 'fleet'"
+    ))
+    assert set(grains) == {"long_haul_km", "total_km", "trips_assigned"}
 
+    write_facts(
+        con, "fact_fleet", scenario_id=0, measure="long_haul_km",
+        facts=[Fact((1,), MARCH2, 640)],
+    )
+    rows = read_facts(
+        con, "fact_fleet", scenario_id=0, measure="long_haul_km",
+        start=MARCH2, end=MARCH6, keys=[(1,)],
+    )
+    assert [r.qty for r in rows] == [640, 0, 0, 0, 0]
+
+
+def test_a_grain_with_no_measures_still_reports_itself_as_reserved(con):
+    """The mechanism that protected fact_fleet for seven build items.
+
+    Exercised by emptying the grain, because every grain now has measures. If
+    this ever stopped working, the next reserved table would silently accept
+    writes under a guessed vocabulary.
+    """
+    con.execute("DELETE FROM measure WHERE grain = 'fleet'")
     with pytest.raises(ValueError, match="reserved"):
         write_facts(
             con, "fact_fleet", scenario_id=0, measure="long_haul_km",

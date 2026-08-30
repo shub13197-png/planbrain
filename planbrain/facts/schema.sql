@@ -44,7 +44,7 @@ CREATE TABLE measure (
     measure      TEXT PRIMARY KEY,
     grain        TEXT NOT NULL
                  CHECK (grain IN ('supply_demand', 'capacity', 'fleet')),
-    unit         TEXT NOT NULL,     -- 'qty' | 'hours'
+    unit         TEXT NOT NULL,     -- 'qty' | 'hours' | 'km' | 'trips'
     derived      INTEGER NOT NULL,  -- 0 = imported input, 1 = computed by a planning run
     description  TEXT NOT NULL
 );
@@ -62,11 +62,17 @@ INSERT INTO measure (measure, grain, unit, derived, description) VALUES
     ('planned_order_receipt', 'supply_demand', 'qty',   1, 'Lot-sized planned receipt, dated when the material is needed'),
     ('planned_order_release', 'supply_demand', 'qty',   1, 'planned_order_receipt offset backward by lead time'),
     ('capacity_avail_hours',  'capacity',      'hours', 0, 'Available hours on a resource in this bucket'),
-    ('capacity_load_hours',   'capacity',      'hours', 1, 'Hours of load placed on a resource by the plan');
--- No measure of grain 'fleet' yet, deliberately. haulplan (build item 6) defines
--- what the fairness ledger actually measures; a guessed vocabulary would invite
--- something to start writing to it before that decision is made. read_facts and
--- write_facts report fact_fleet as reserved until a measure is added here.
+    ('capacity_load_hours',   'capacity',      'hours', 1, 'Hours of load placed on a resource by the plan'),
+    -- Fleet measures, defined at build item 9 from what the fairness ledger
+    -- actually needs. The grain was reserved with an EMPTY measure set from item
+    -- 2 until then, so nothing could write to it before the decision was made.
+    -- All three are FLOWS: what happened in this bucket, zero otherwise, stored
+    -- sparsely. The cumulative year-to-date ledger is summed on read. A stored
+    -- cumulative would make a fact row mean "running total" here and "quantity
+    -- in this bucket" everywhere else, which this schema forbids permanently.
+    ('long_haul_km',          'fleet',         'km',    1, 'Long-haul kilometres assigned to a truck in this bucket; the fairness ledger measure'),
+    ('total_km',              'fleet',         'km',    1, 'All kilometres assigned to a truck in this bucket, long-haul or not'),
+    ('trips_assigned',        'fleet',         'trips', 1, 'Trips assigned to a truck in this bucket; few long runs and many short ones are different working weeks');
 
 CREATE TABLE fact_supply_demand (
     sku_id       INTEGER NOT NULL,
@@ -87,7 +93,8 @@ CREATE TABLE fact_capacity (
     PRIMARY KEY (resource_id, bucket_date, measure, scenario_id)
 );
 
--- Reserved for haulplan (build item 6). Empty until the fairness ledger lands.
+-- The fairness ledger's grain. Reserved with an empty measure set from item 2
+-- until item 9 defined what the ledger actually measures.
 CREATE TABLE fact_fleet (
     truck_id     INTEGER NOT NULL,
     bucket_date  DATE    NOT NULL,

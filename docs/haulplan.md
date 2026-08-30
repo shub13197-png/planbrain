@@ -118,6 +118,34 @@ truck is reported as **unassigned**, never forced onto an infeasible one — the
 same principle as `haulplan_output` already carrying `truck_id: null`, which
 `docs/contracts/solver_io.md` established at item 1.
 
+## Demo fleet data, stated before it was generated
+
+The fairness *result* depends on what the demo's trips and opening ledger look
+like, so the rule for producing them is committed here rather than chosen after
+seeing a number.
+
+**Distances** are plant-to-depot, at roughly real road distances from Bhiwadi:
+Delhi 80 km, Jaipur 180 km, Ludhiana 420 km. **Long-haul threshold: 250 km**, so
+Ludhiana runs are long-haul and the other two are not. One distant depot out of
+three is a realistic shape for a regional blender.
+
+**Trips** are generated from the finished-goods demand each depot actually
+takes, converted to truckloads at a stated 12,000 kg per load with 1 litre
+treated as 0.9 kg. Depots are replenished on a fixed weekly cadence rather than
+continuously, because that is how a small fleet runs.
+
+**Opening year-to-date ledger is deliberately skewed**, and this needs saying
+plainly: the trucks start with cumulative long-haul kilometres spread across a
+wide band rather than level. That is not rigging the result, it is the premise —
+a fairness ledger exists *because* fleets drift out of balance, and a demo that
+starts perfectly level would have nothing to correct and would make the feature
+look pointless in exactly the way a perfectly balanced plant would have made
+rough-cut look pointless.
+
+**What is forbidden:** adjusting the skew, the threshold or the cadence after
+seeing the Jain index. If greedy assignment barely moves fairness, that is the
+finding.
+
 ## Scope limits
 
 * **No routing.** Distances arrive from the caller, from an OSRM matrix in
