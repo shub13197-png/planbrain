@@ -30,7 +30,7 @@ be consistent with.
 | `HORIZON_DAYS` | 90 | forward planning horizon |
 | `N_RAW` / `N_INTERMEDIATE` / `N_FINISHED` | 40 / 40 / 120 | 200 SKUs, three BOM levels |
 | `PACKS` | 1L, 5L, 20L, 26L, 210L | **collides with** `PACKAGING_COST` keys and, via load sizes, with truck capacity |
-| truck capacities | 9,000 / 16,000 / 25,000 kg, random | **collided with** `TRUCKLOAD_KG` — see item 10 |
+| ~~truck capacities~~ | *superseded at item 10* | now sized from the freight profile, not random |
 | `PATTERNS` | smooth .22, erratic .18, seasonal .15, intermittent .27, lumpy .18 | demand mix |
 
 ## Demand messiness — items 2 and 7
@@ -78,6 +78,13 @@ high side, which under-provisions changeover by 57%. See `rccp.md`.
 | `CAPACITY_COST_PER_HOUR` | 1,500 | |
 | `ANNUAL_CARRYING_RATE` | 0.25 | **explicitly out of bounds for tuning** |
 
+## Fleet sizing — item 10, committed in `53e4c0b`
+
+| constant | value | doc |
+|---|---|---|
+| `TRUCK_CLASSES` | 9,000 / 16,000 / 25,000 kg | `haulplan.md` |
+| `MIN_SMALL_SHARE` | 1/3 | keeps the feasibility filter biting |
+
 ## Fleet and fairness — item 9, committed in `255258d`
 
 | constant | value | doc |
@@ -107,4 +114,5 @@ Things that must agree, and where they are checked:
 | `grains.py` ↔ `schema.sql` tables | `test_registry_matches_the_schema` |
 | measure grain ↔ fact table | `read_facts` / `write_facts` |
 | `TARGET_UTILISATION` ↔ sized capacity | `test_capacity_lands_on_the_stated_target_utilisation` |
-| truck capacities ↔ `TRUCKLOAD_KG` | **nothing, until item 10** |
+| truck capacities ↔ `TRUCKLOAD_KG` | fleet sized from payload distribution; `_size_fleet` raises if the heaviest payload exceeds every class |
+| `TRUCK_CLASSES` ↔ `MIN_SMALL_SHARE` | `test_a_third_of_the_fleet_cannot_take_a_full_load` |

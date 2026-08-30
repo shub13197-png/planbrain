@@ -55,6 +55,41 @@ def coefficient_of_variation(values):
     return math.sqrt(variance) / mean
 
 
+def ceiling(opening, work_available: float):
+    """Best Jain index any assignment could reach, given the work there is.
+
+    Water-filling: pour the available long-haul kilometres into the trucks
+    furthest behind until they level. Deliberately **ignores** the 420 km trip
+    granularity and the one-trip-per-truck-per-bucket limit, so it is an
+    unreachable upper bound rather than an optimum.
+
+    That is what makes it useful. If a greedy rule sits close to this ceiling,
+    no optimiser has room to do better on fairness alone, and a solver would be
+    reporting an improvement over a baseline that was never the constraint. It
+    turns "greedy is probably enough" from an assertion into a measurement.
+    """
+    values = sorted(float(v) for v in opening)
+    if not values:
+        return None
+    remaining = float(work_available)
+
+    for i in range(1, len(values) + 1):
+        if i == len(values):
+            level = sum(values) / len(values) + remaining / len(values)
+            values = [level] * len(values)
+            break
+        step = (values[i] - values[i - 1]) * i
+        if remaining < step:
+            level = values[i - 1] + remaining / i
+            values[:i] = [level] * i
+            break
+        for j in range(i):
+            values[j] = values[i]
+        remaining -= step
+
+    return jain_index(values)
+
+
 def verdict(index) -> str:
     """Plain-language reading of the index against the committed thresholds."""
     if index is None:

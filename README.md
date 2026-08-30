@@ -188,6 +188,7 @@ quietly excluding the hard ones is how a portfolio average gets improved.
 | [`docs/capacity-sizing.md`](docs/capacity-sizing.md) | How the demo plant was sized, written before it was run |
 | [`docs/reconciliation.md`](docs/reconciliation.md) | Why netreq and the simulation report different stock |
 | [`docs/haulplan.md`](docs/haulplan.md) | The long-haul fairness ledger, and an ordering bug it caught |
+| [`docs/constants.md`](docs/constants.md) | Every committed constant, which item set it, and what it must agree with |
 | [`docs/unit-costs.md`](docs/unit-costs.md) | How costs are derived, written before they were computed |
 | [`docs/demo.md`](docs/demo.md) | The seeded dataset |
 
@@ -199,7 +200,7 @@ weeks.
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                                  # 412 tests
+pytest -q                                  # 418 tests
 python -m tools.check_fact_access          # the CI gate
 python -m tools.seed_demo                  # build the demo database
 python -m tools.service_report --sample 40 # the evidence above

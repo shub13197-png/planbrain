@@ -154,6 +154,32 @@ def test_the_committed_thresholds_are_the_ones_in_the_docs():
     assert ACCEPTABLE == 0.85
 
 
+def test_the_ceiling_is_reached_when_there_is_enough_work():
+    """Enough kilometres to level the fleet entirely means a ceiling of 1.0."""
+    from planbrain.haulplan import ceiling
+
+    assert ceiling([100.0, 0.0], work_available=100.0) == pytest.approx(1.0)
+
+
+def test_the_ceiling_is_bounded_by_the_work_available():
+    """The finding this exists to make measurable: a gap larger than all the
+    work there is cannot be closed, however cleverly the work is assigned."""
+    from planbrain.haulplan import ceiling
+
+    limited = ceiling([100.0, 0.0], work_available=10.0)
+    assert limited is not None
+    assert limited < 1.0
+    assert limited > jain_index([100.0, 0.0])
+
+
+def test_the_ceiling_never_falls_below_the_opening():
+    """Adding work to the trucks furthest behind cannot make a fleet less fair."""
+    from planbrain.haulplan import ceiling
+
+    opening = [40_000.0, 12_000.0, 30_000.0]
+    assert ceiling(opening, 5_000.0) >= jain_index(opening)
+
+
 def test_spread_and_variation_are_reported_alongside():
     """Jain alone can hide a large absolute gap on a big fleet."""
     values = [40_000.0, 12_000.0]

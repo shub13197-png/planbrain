@@ -298,3 +298,85 @@ capture most of the available fairness. On this data it reaches 0.9550 against a
 committed fair threshold of 0.95, so there is very little headroom left for a
 solver to claim on fairness alone. Where a solver would earn its place is
 trading fairness against distance cost, which this pass does not attempt.
+
+---
+
+# Outcome, item 10: the resized fleet
+
+*Appended after running. Nothing above the fleet sizing rule was changed, and
+`TRUCKLOAD_KG` was not touched.*
+
+## The fleet the freight profile produced
+
+15 trucks: **5 rigid at 9,000 kg (33%), 7 standard at 16,000 kg, 3 large at
+25,000 kg.** The rigid share lands exactly on the committed minimum of one
+third, so the feasibility filter keeps biting.
+
+## Unassigned trips fell as expected
+
+| | item 9 fleet | resized fleet |
+|---|---|---|
+| trucks | 12 | 15 |
+| trips assigned | 104 / 169 | **156 / 169** |
+| unassigned | 65 | **13** |
+| long-haul assigned | 65 / 65 | 65 / 65 |
+
+The remaining 13 are all *every capable truck is already committed in this
+bucket* — peak-bucket pressure, which the committed rule deliberately did not
+size away. A fleet with zero slack pressure is not realistic.
+
+## The Jain index went DOWN, and that was allowed for
+
+| | opening | after greedy | verdict |
+|---|---|---|---|
+| item 9, 12 trucks | 0.9169 | 0.9550 | fair |
+| resized, 15 trucks | 0.8288 | **0.8865** | **acceptable** |
+
+The committed expectation said the index might move either way and that whatever
+came out would be reported. It came out worse, and here is why — it is not a
+regression in the assignment.
+
+**The comparison is not like-for-like.** The opening ledger is drawn per truck
+from the same 8,000–46,000 km band. Fifteen draws from that band are more
+dispersed than twelve, so the fleet *starts* less fair: opening J fell from
+0.9169 to 0.8288.
+
+**Greedy's improvement actually grew**, from +0.0381 to **+0.0577**. It is doing
+more work on a harder fleet and finishing lower.
+
+## The structural limit, now measured
+
+The opening spread is **36,956 km**. All the long-haul work in the horizon is
+65 trips × 420 km = **27,300 km**.
+
+**There is less work available than the gap to be closed.** Even handing every
+single long-haul trip to the one truck furthest behind could not level the
+fleet. A 90-day horizon cannot undo a year of drift, and no assignment rule
+changes that — fairness correction is a multi-quarter process, and any claim
+that one plan run fixes it would be false.
+
+## How much room a solver has: 0.0033
+
+`fairness.ceiling()` water-fills the available kilometres into the trucks
+furthest behind, ignoring the 420 km trip granularity and the
+one-trip-per-truck-per-bucket limit. That makes it an **unreachable** upper
+bound rather than an optimum.
+
+| | Jain |
+|---|---|
+| greedy achieved | 0.8865 |
+| water-fill ceiling | 0.8898 |
+| **headroom for any optimiser** | **0.0033** |
+
+Greedy is within a third of a percentage point of a bound no real solver could
+reach, because the bound ignores two constraints a solver would have to respect.
+
+**This is what makes the Timefold deferral a measurement rather than an
+opinion.** A solver run here would report an improvement over a baseline that
+was never the binding constraint, and the most it could possibly claim on
+fairness is 0.0033. The constraint is the work available and the ledger's
+opening spread, neither of which an optimiser can change.
+
+Timefold earns entry when fairness must be traded against **distance cost** —
+a genuinely multi-objective problem where greedy has no answer at all. That
+needs a cost model on trips, which this pass does not have.

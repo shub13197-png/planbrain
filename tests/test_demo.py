@@ -57,8 +57,33 @@ def test_has_two_hundred_skus(demo):
     assert len({p.sku_id for p in demo.parts}) == 200
 
 
-def test_has_twelve_trucks(demo):
-    assert len(demo.trucks) == 12
+def test_the_fleet_is_sized_from_the_freight_profile(demo):
+    """Item 9 found six of twelve trucks unable to take a 12,000 kg truckload,
+    because capacities were random and the truckload was set separately."""
+    from planbrain.demo.generate import TRUCKLOAD_KG
+
+    assert demo.trucks
+    heaviest = max(t.load_kg for t in demo.trips)
+    assert max(t.capacity_kg for t in demo.trucks) >= heaviest
+
+
+def test_a_third_of_the_fleet_cannot_take_a_full_load(demo):
+    """Deliberate. A fleet where every truck can do every trip removes the
+    feasibility filtering entirely and the ledger becomes a round-robin."""
+    from planbrain.demo.generate import MIN_SMALL_SHARE, TRUCKLOAD_KG
+
+    small = [t for t in demo.trucks if t.capacity_kg < TRUCKLOAD_KG]
+    assert len(small) / len(demo.trucks) >= MIN_SMALL_SHARE - 1e-9
+
+
+def test_enough_capable_trucks_for_the_busiest_bucket(demo):
+    from collections import Counter
+
+    from planbrain.demo.generate import TRUCKLOAD_KG
+
+    full_loads = Counter(t.bucket for t in demo.trips if t.load_kg >= TRUCKLOAD_KG)
+    capable = sum(1 for t in demo.trucks if t.capacity_kg >= TRUCKLOAD_KG)
+    assert capable >= max(full_loads.values())
 
 
 def test_has_a_plant_and_depots(demo):

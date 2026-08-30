@@ -8,6 +8,7 @@ before any assignment ran.
 from .fairness import (
     ACCEPTABLE,
     FAIR,
+    ceiling,
     coefficient_of_variation,
     equivalent_equal_share,
     jain_index,
@@ -20,6 +21,7 @@ __all__ = [
     "ACCEPTABLE",
     "FAIR",
     "MEASURES",
+    "ceiling",
     "Ledger",
     "Trip",
     "Truck",

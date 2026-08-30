@@ -20,6 +20,7 @@ not an oversight: telling them apart is the forecaster's problem, and pretending
 the dataset knows the difference would make item 4 easier than reality.
 """
 
+import math
 import random
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -146,10 +147,8 @@ def build_demo(seed: int = 7) -> DemoDataset:
     parts = _cost_parts(parts, bom)
     resources = _build_resources()
     routings = _build_routings(rng, parts, resources)
-    trucks = [
-        Truck(500 + i, f"RJ14-{2000 + i * 137:04d}", rng.choice([9000.0, 16000.0, 25000.0]))
-        for i in range(1, 13)
-    ]
+    # Sized after trips exist, from the freight profile. See docs/haulplan.md.
+    trucks = []
 
     horizon_start = HISTORY_END + timedelta(days=1)
     horizon_end = horizon_start + timedelta(days=HORIZON_DAYS - 1)
@@ -173,6 +172,7 @@ def build_demo(seed: int = 7) -> DemoDataset:
     demo.facts[("fact_capacity", "capacity_avail_hours")] = _build_capacity(rng, demo)
     demo.stock_on_hand = _build_stock(rng, demo)
     demo.trips = _build_trips(rng, demo)
+    demo.trucks = _size_fleet(demo)
     demo.truck_ytd_long_haul_km = _build_fleet_ledger(rng, demo)
     return demo
 
@@ -517,6 +517,64 @@ def _build_trips(rng, demo):
                                   distance >= LONG_HAUL_KM))
                 trip_id += 1
     return trips
+
+
+#: docs/haulplan.md, committed before the fleet was sized. A mixed fleet because
+#: freight is mixed; at least a third unable to take a full load so the
+#: feasibility filter keeps biting.
+TRUCK_CLASSES = ((9_000.0, "rigid"), (16_000.0, "standard"), (25_000.0, "large"))
+MIN_SMALL_SHARE = 1 / 3
+
+
+def _size_fleet(demo) -> list:
+    """Size the fleet from the payload distribution across trips.
+
+    Never from what makes the fairness index look good, and TRUCKLOAD_KG is a
+    committed input that is not adjusted to suit the fleet.
+
+    Full-load trips need a truck of at least TRUCKLOAD_KG. The busiest bucket
+    sets how many such trucks are needed, since a truck does one trip a bucket.
+    Small rigids then top the fleet up to the committed minimum share, and they
+    carry the part loads that would otherwise waste a big truck.
+    """
+    by_bucket, small_by_bucket = {}, {}
+    for trip in demo.trips:
+        if trip.load_kg >= TRUCKLOAD_KG:
+            by_bucket[trip.bucket] = by_bucket.get(trip.bucket, 0) + 1
+        else:
+            small_by_bucket[trip.bucket] = small_by_bucket.get(trip.bucket, 0) + 1
+
+    peak_full = max(by_bucket.values()) if by_bucket else 0
+    peak_small = max(small_by_bucket.values()) if small_by_bucket else 0
+
+    # Every payload must be carriable by some class, or the fleet cannot move
+    # its own freight -- the failure item 9 found.
+    heaviest = max((t.load_kg for t in demo.trips), default=0.0)
+    largest_class = max(cap for cap, _name in TRUCK_CLASSES)
+    if heaviest > largest_class:
+        raise ValueError(
+            f"heaviest payload {heaviest:,.0f} kg exceeds every truck class; "
+            f"the fleet cannot carry its own freight"
+        )
+
+    capable = max(peak_full, 1)
+    # Large trucks take a third of full-load duty, standards the rest.
+    large = max(1, capable // 3)
+    standard = capable - large
+    small = max(peak_small, _min_small(capable))
+
+    trucks, truck_id = [], 501
+    for count, capacity in ((small, 9_000.0), (standard, 16_000.0), (large, 25_000.0)):
+        for _ in range(count):
+            trucks.append(Truck(truck_id, f"RJ14-{2000 + truck_id * 7:04d}", capacity))
+            truck_id += 1
+    return trucks
+
+
+def _min_small(capable: int) -> int:
+    """Smallest count of rigids that keeps them at or above the committed share."""
+    # small / (small + capable) >= MIN_SMALL_SHARE
+    return max(1, math.ceil(capable * MIN_SMALL_SHARE / (1 - MIN_SMALL_SHARE)))
 
 
 def _build_fleet_ledger(rng, demo):
