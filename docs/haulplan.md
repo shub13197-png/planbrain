@@ -146,6 +146,59 @@ rough-cut look pointless.
 seeing the Jain index. If greedy assignment barely moves fairness, that is the
 finding.
 
+## Fleet sizing rule — item 10, committed before the numbers
+
+Item 9 found six of twelve trucks below the 12,000 kg truckload, so half the
+fleet could not take a full load and 65 trips had no feasible truck. This is the
+rule that replaces the arbitrary capacities generated at item 2.
+
+**Sized from the freight profile**, never from what makes the fairness index
+look good.
+
+1. Build the **payload distribution** across all generated trips — how many
+   loads at what weight.
+2. Every payload must be carriable by **some** truck class, or the fleet cannot
+   move its own freight.
+3. Size the count of each class so that the **number of trips needing a truck in
+   any bucket** can be met, allowing for one trip per truck per bucket.
+
+**`TRUCKLOAD_KG` at 12,000 is a committed input and is not touched.** The fleet
+adapts to the freight, not the other way round.
+
+### The committed mix
+
+Three classes, and the rationale is that a real depot runs a mixed fleet because
+freight is mixed:
+
+| class | capacity | intended for |
+|---|---|---|
+| rigid | 9,000 kg | remainder and part loads only |
+| standard | 16,000 kg | the 12,000 kg full truckload |
+| large | 25,000 kg | full loads and any future consolidation |
+
+**Some trucks stay unable to take the largest loads, deliberately.** A fleet
+where every truck can do every trip removes the feasibility filtering entirely,
+and the ledger becomes a round-robin. No real depot looks like that, and a demo
+that did would make the feasibility filters untestable against real data.
+
+**Committed proportions: at least one third of the fleet must be unable to take
+a full 12,000 kg load.** That keeps the filter biting. The remainder is split so
+that full-load demand in the busiest bucket can be met.
+
+### What is forbidden
+
+* Changing `TRUCKLOAD_KG`, `LONG_HAUL_KM`, `REPLENISH_EVERY_DAYS` or
+  `YTD_BAND_KM` — all committed at item 9.
+* Adjusting the mix after seeing the Jain index.
+* Sizing the fleet so that every trip is assignable. Some unassigned trips in a
+  peak bucket are realistic; a fleet with zero slack pressure is not.
+
+**Committed expectation:** unassigned trips should fall substantially from 65,
+and the Jain index may move in **either** direction. A fleet with more capable
+trucks spreads long-haul work across more of them, which could improve fairness
+— or dilute it, if the extra trucks start from the low end of the ledger band.
+**Whatever comes out is reported, including if it is worse than 0.9550.**
+
 ## Scope limits
 
 * **No routing.** Distances arrive from the caller, from an OSRM matrix in
