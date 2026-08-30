@@ -35,6 +35,29 @@ trustworthy:
 If you are evaluating planning tools, the fill rates below are worth less to you
 than the fact that they were produced this way. Anyone can show you a number.
 
+The method is written up on its own, domain-independent, in
+[`docs/method.md`](docs/method.md).
+
+## And the limit on all of it: this is a synthetic world we built
+
+Every number in this repository was measured against a demo dataset **we wrote
+ourselves**. The five-seed audit tests sensitivity to sampling *within one model
+of a plant*. It does not test whether that model resembles a real one.
+
+So a claim holding on 5 of 5 seeds is evidence against a fluke. **It is not
+evidence about your data.** The demand patterns, the cost structure, the BOM
+depth, the lead times and the changeover economics were all chosen by us, and
+choosing them differently would move the results — we know this because it
+already happened twice, when a full-portfolio run killed one claim and a
+five-seed run weakened another.
+
+This is stated here, at the top, rather than in a gaps list at the bottom,
+because it is the single most important qualification on everything below.
+
+The only cure is real data. That is what the importer is for, and
+`--check` will tell you what stands between your spreadsheets and a plan without
+you committing to anything.
+
 ---
 
 ## Does it actually work? Here is the evidence.
@@ -292,6 +315,7 @@ quietly excluding the hard ones is how a portfolio average gets improved.
 | [`docs/haulplan.md`](docs/haulplan.md) | The long-haul fairness ledger, and an ordering bug it caught |
 | [`docs/constants.md`](docs/constants.md) | Every committed constant, which item set it, and what it must agree with |
 | [`docs/audit.md`](docs/audit.md) | Manual code audit: what was removed and what was left alone |
+| [`docs/method.md`](docs/method.md) | **How this was built — written to transfer to any measurement work** |
 | [`docs/claim-audit.md`](docs/claim-audit.md) | Every claim re-run across five seeds, and the one it weakened |
 | [`docs/unit-costs.md`](docs/unit-costs.md) | How costs are derived, written before they were computed |
 | [`docs/demo.md`](docs/demo.md) | The seeded dataset |
