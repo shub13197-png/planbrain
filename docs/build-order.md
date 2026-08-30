@@ -14,9 +14,11 @@ as the historical input — where the two disagree, this file wins.
 | 7 | Balance the demo, add drift, close the capacity loop | done — `eaa629b` |
 | **8** | **Reconcile the two engines; add unit costs** | **done** |
 | 9 | `haulplan` — fairness ledger + greedy assignment | done — `c18e5e5` |
-| **10** | **Fleet sized from the freight profile** | **done** |
-| 11 | Importer | not started |
-| 12 | UI grid | not started |
+| 10 | Fleet sized from the freight profile | done — `5704356` |
+| **11** | **Fix the infeasibility framing + capacity sensitivity** | **done** |
+| **12** | **Importer** | next |
+| **13** | **README, demo, manual code audit** | after |
+| 14 | UI grid | not started |
 
 ## Change: the service backtest was promoted to item 5
 

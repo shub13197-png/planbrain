@@ -172,6 +172,47 @@ def test_the_reorder_point_is_a_real_incumbent_not_a_straw_man(report):
     assert reorder > 0.8
 
 
+# --------------------------------------------------------------------------
+# the capacity sensitivity (item 10)
+# --------------------------------------------------------------------------
+
+def test_a_delivery_factor_reduces_what_arrives():
+    """The crude capacity cap. The planner still orders; less turns up."""
+    def order_50(t, on_hand, inbound):
+        return 50.0 if t == 0 else 0.0
+
+    # Demand lands in bucket 1, which is when the bucket-0 order arrives.
+    full = replay([0.0, 50.0], order_50, initial_on_hand=0.0, lead_time_days=1)
+    half = replay([0.0, 50.0], order_50, initial_on_hand=0.0, lead_time_days=1,
+                  delivery_factor=[1.0, 0.5])
+    assert full.units_served == 50.0
+    assert half.units_served == 25.0
+    assert half.units_ordered == full.units_ordered, "ordering is unaffected"
+
+
+def test_the_capacity_factor_is_bounded_and_per_bucket(seeded, demo):
+    """A bucket with no load is unconstrained, never zero-capacity."""
+    from planbrain import netreq, simulate
+
+    netreq.run(seeded, demo)
+    factor = simulate.capacity_factor(seeded, demo, holdout_days=90)
+    assert len(factor) == 90
+    assert all(0.0 < f <= 1.0 for f in factor)
+    assert any(f < 1.0 for f in factor), "rccp reports this plan infeasible"
+
+
+def test_the_capped_run_is_labelled_as_such(seeded, demo, sample_keys):
+    """A reader must be able to tell the two numbers apart."""
+    from planbrain import netreq, simulate
+
+    netreq.run(seeded, demo)
+    factor = simulate.capacity_factor(seeded, demo, holdout_days=90)
+    capped = simulate.compare(seeded, demo, keys=sample_keys, delivery_factor=factor)
+    plain = simulate.compare(seeded, demo, keys=sample_keys)
+    assert capped["capacity_constrained"] is True
+    assert plain["capacity_constrained"] is False
+
+
 def test_series_with_no_holdout_demand_are_unscored_not_perfect(report):
     """Counting them as 100% would lift the average with SKUs never tested."""
     for result in report["policies"].values():

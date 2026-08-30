@@ -92,12 +92,20 @@ def replay(
     initial_on_hand: float,
     lead_time_days: int,
     review_every: int = 1,
+    delivery_factor: list = None,
 ) -> Outcome:
     """Replay ``demand`` under ``policy`` and report service against stock held.
 
     ``policy`` is ``(bucket, on_hand, inbound) -> order quantity``. It sees the
     position it would really see: what is physically here and what is already on
     its way. It does not see future demand, which is the entire point.
+
+    ``delivery_factor`` scales what actually **arrives** in each bucket, on the
+    scale 0 to 1. It exists to model a plant that cannot make everything that
+    was ordered: the planner still orders what they need, and less turns up. It
+    applies at delivery rather than at ordering because that is where the
+    constraint bites -- a capacity shortfall does not stop anyone raising an
+    order, it stops the goods appearing.
     """
     if lead_time_days < 0:
         raise ValueError(f"lead time cannot be negative, got {lead_time_days}")
@@ -110,13 +118,18 @@ def replay(
     on_hand_trace = []
 
     for t, quantity in enumerate(demand):
-        state.on_hand += state.pipeline.pop(t, 0.0)
+        arriving = state.pipeline.pop(t, 0.0)
+        if delivery_factor is not None:
+            arriving *= delivery_factor[t]
+        state.on_hand += arriving
 
         if t % review_every == 0:
             order = policy(t, state.on_hand, state.inbound)
             if order and order > 0:
                 arrival = t + lead_time_days
                 if arrival == t:
+                    if delivery_factor is not None:
+                        order *= delivery_factor[t]
                     # Same-bucket delivery. This must be added to stock directly:
                     # this bucket's arrivals were popped above, so anything put
                     # into the pipeline at t is never collected and the order

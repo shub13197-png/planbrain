@@ -17,6 +17,7 @@ that settles it, and the number a finance manager will actually read.
 from dataclasses import dataclass
 
 from ..forecast import classify, make_forecaster
+from ..facts.access import read_facts
 from ..forecast.metrics import ScoredMean, scored_mean
 from .core import Outcome, replay
 from .policies import (
@@ -40,6 +41,7 @@ __all__ = [
     "Outcome",
     "POLICIES",
     "PolicyResult",
+    "capacity_factor",
     "compare",
     "demand_statistics",
     "forecast_order_up_to",
@@ -65,6 +67,50 @@ class PolicyResult:
     by_pattern: dict
 
 
+def capacity_factor(con, demo, *, scenario_id: int = 0, holdout_days: int = 90) -> list:
+    """Per-bucket share of ordered production the plant could actually make.
+
+    **A crude sensitivity, and labelled as one.** It takes the per-bucket ratio
+    of available hours to loaded hours from `rccp` on the forward horizon and
+    applies it to the holdout window as a stationary approximation. The horizons
+    are different, so this is not the true constraint on those buckets -- it is
+    the shape of the constraint the same plant exhibits.
+
+    Crude is the point. The service backtest currently assumes production is
+    unconstrained while `rccp` reports the same plan infeasible in 147 of 450
+    resource-buckets, and one unqualified number is worse than an honest range.
+    """
+    from .. import rccp
+
+    report = rccp.run(con, demo, scenario_id=scenario_id)
+    buckets = report["buckets"]
+
+    loads = [0.0] * buckets
+    available = [0.0] * buckets
+    for resource_id in report["resources"]:
+        rows = read_facts(
+            con, "fact_capacity", scenario_id=scenario_id,
+            measure="capacity_load_hours",
+            start=demo.horizon_start, end=demo.horizon_end, keys=[(resource_id,)],
+        )
+        avail = read_facts(
+            con, "fact_capacity", scenario_id=scenario_id,
+            measure="capacity_avail_hours",
+            start=demo.horizon_start, end=demo.horizon_end, keys=[(resource_id,)],
+        )
+        for i, row in enumerate(rows):
+            loads[i] += row.qty
+        for i, row in enumerate(avail):
+            available[i] += row.qty
+
+    # A bucket with no load is unconstrained, not zero-capacity.
+    horizon = [
+        1.0 if load <= 0 else min(1.0, avail / load)
+        for load, avail in zip(loads, available)
+    ]
+    return [horizon[t % len(horizon)] for t in range(holdout_days)]
+
+
 def compare(
     con,
     demo,
@@ -73,6 +119,7 @@ def compare(
     keys=None,
     holdout_days: int = 90,
     safety_days: float = 0.0,
+    delivery_factor: list = None,
 ) -> dict:
     """Replay the holdout window under every policy. Returns a report per policy.
 
@@ -147,7 +194,8 @@ def compare(
         }
         for name, policy in runs.items():
             outcomes[name][key] = replay(
-                holdout, policy, initial_on_hand=opening, lead_time_days=lead_time
+                holdout, policy, initial_on_hand=opening, lead_time_days=lead_time,
+                delivery_factor=delivery_factor,
             )
 
     if unmatched:
@@ -160,6 +208,7 @@ def compare(
         "evaluated": len(patterns),
         "portfolio": len(all_keys),
         "holdout_days": holdout_days,
+        "capacity_constrained": delivery_factor is not None,
         "pattern_mix": _tally(patterns.values()),
         "policies": {
             name: _summarise_policy(name, runs, patterns)

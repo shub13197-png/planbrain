@@ -3,6 +3,20 @@
 Build item 5, and the proof-of-value report. Everything else in this repo is
 machinery for producing the table below.
 
+> ## Read this first: these numbers assume production is unconstrained
+>
+> Every fill rate on this page assumes the plant makes whatever the policy
+> orders. **It cannot.** `rccp` reports the same plan as **infeasible in 147 of
+> 450 resource-buckets**, at 87% overall utilisation, with individual buckets
+> down to 21% of the capacity their load requires.
+>
+> A capacity-capped sensitivity is reported at the bottom of this page. The
+> honest headline is a **range**, not the single number in the table below.
+>
+> This is the largest open gap in the project. The engines do not agree about
+> whether the plan is real: `rccp` says it cannot be made, and every stock and
+> service figure here assumes it gets made anyway.
+
 ```bash
 python -m tools.service_report --sample 60
 python -m tools.service_report --sample 60 --sweep    # the frontier
@@ -171,3 +185,63 @@ resource. None are in scope, and multi-echelon is "later if ever".
   balancing, so the service figures above are what the plant would achieve *if
   it could make the plan*. Reconciling the two is unstarted and is the largest
   open item in the repo.
+
+---
+
+# Capacity sensitivity (item 10)
+
+## What was done
+
+`simulate.capacity_factor()` takes the per-bucket ratio of available hours to
+loaded hours from `rccp` and applies it to the holdout as a **delivery factor** —
+the planner still orders what they need, and less turns up.
+
+Across the horizon the factor averages 0.916, with 70 of 90 buckets unconstrained
+and the ten worst at **0.21, 0.34, 0.36, 0.38, 0.38, 0.41, 0.42, 0.46, 0.47,
+0.51**. The constraint is concentrated, not spread.
+
+## The range
+
+| | fill rate | avg on-hand |
+|---|---|---|
+| unconstrained (headline table above) | **97.9%** | 1,245 |
+| capacity-capped | **97.3%** | 1,214 |
+
+By demand pattern, fill rate / average on-hand:
+
+| pattern | unconstrained | capacity-capped | change |
+|---|---|---|---|
+| smooth | 99.8% / 1,861 | 99.7% / 1,845 | −0.1 |
+| erratic | 97.1% / 1,759 | **98.4%** / 1,697 | **+1.3** |
+| intermittent | 97.4% / 769 | 96.8% / 730 | −0.6 |
+| **lumpy** | 96.2% / 752 | **94.3%** / 722 | **−1.9** |
+
+**Lumpy demand takes the damage**, which is consistent with everything else in
+this repo: it is the class with the least slack and the least room to recover
+from a missed delivery.
+
+## Three limitations, because a crude number presented cleanly is worse than none
+
+**It is not a clean lower bound.** Erratic demand scores *higher* under the cap.
+That is not an error: an order-up-to policy that under-receives sees a lower
+position and orders more, and the larger later orders overshoot. The cap changes
+the policy's behaviour, not just its supply. So the range is indicative, not a
+bound in either direction.
+
+**The horizons do not match.** `rccp` runs on the forward horizon; the service
+backtest runs on a holdout inside history. The factor is applied cyclically as a
+stationary approximation — the *shape* of the constraint this plant exhibits, not
+the actual constraint on those buckets.
+
+**It probably understates the impact.** The simulation's order-up-to policy
+produces smoother, smaller orders than `netreq`'s lot-sized plan. The capacity
+shortfall was measured against the lumpier plan and applied to the smoother one,
+so the real bite is likely larger than 0.6 points.
+
+## What would close this properly
+
+Capacity-feasible lot sizing — the CLSP — so that the plan `rccp` checks is one
+the plant can actually make, and the service backtest replays a feasible plan
+rather than an aspirational one. Deliberately not built here: it is a different
+and much harder problem, and a crude honest range is worth more today than a
+precise number three items away.

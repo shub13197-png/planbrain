@@ -200,7 +200,7 @@ weeks.
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                                  # 418 tests
+pytest -q                                  # 421 tests
 python -m tools.check_fact_access          # the CI gate
 python -m tools.seed_demo                  # build the demo database
 python -m tools.service_report --sample 40 # the evidence above
