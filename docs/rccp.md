@@ -154,3 +154,70 @@ reports **zero** buckets of load without capacity, and a test holds it there.
   and nothing reconciles them.
 * **No sequence-dependent setups.** A flush between two compatible grades costs
   less than between incompatible ones. Rough-cut charges a flat setup per bucket.
+
+---
+
+# Finding: the plant is under-budgeted for changeover, by 57%
+
+A separate result from the infeasibility above, and it needs its own section
+because the two are easy to conflate — and conflating them would overstate both.
+
+## The arithmetic
+
+Capacity sizing (`docs/capacity-sizing.md`, committed `3e0977d`) provisioned
+changeover capacity on the assumption of a **14-day campaign cycle**. Cost-based
+lot sizing, priced from unit costs committed independently (`1ce6c66`), produces
+campaigns roughly every **8.5 days**.
+
+Over the 90-bucket horizon, across 160 routings:
+
+| | provisioned | realised | ratio |
+|---|---|---|---|
+| campaigns | 1,029 | 1,680 | **1.63×** |
+| changeover hours | 1,162 | 1,824 | **1.57×** |
+
+**The changeover budget is short by 663 hours, or 5.1% of the plant's total
+capacity.** Nothing was tuned to produce that: one number came from demand
+volumes and an assumed campaign frequency, the other from material prices and a
+fixed carrying rate, and neither derivation reads the other.
+
+## What this is a capability to do
+
+**This tool can tell a plant that it is provisioned for fewer changeovers than
+its own cost structure demands.** That is a real and useful thing to learn, and
+it is not something a reorder point or a spreadsheet can produce, because
+neither has both a routing model and a lot-sizing economics model to compare.
+
+The plant does not know it. Its aggregate capacity looks adequate — total load
+of 11,258 hours against 12,920 available — so nothing in a utilisation report
+flags it. The shortfall only appears when the changeover budget is separated
+from run time and compared against what the economics call for.
+
+## What this is NOT: the explanation for the infeasibility
+
+It would be convenient to say the plan is infeasible because the plant is
+under-budgeted. **The data does not support that**, and the counterfactual is
+cheap to run.
+
+Re-sizing with the changeover allowance matched to the realised campaign
+interval — a diagnostic only; the committed demo sizing is unchanged:
+
+| allowance | capacity | utilisation | overloaded buckets | feasible |
+|---|---|---|---|---|
+| 14 days (committed) | 12,920 h | 87% | 147 / 450 | no |
+| 9.0 days (median) | 13,691 h | 82% | 139 / 450 | no |
+| 8.5 days (mean) | 13,816 h | 81% | 138 / 450 | no |
+
+Correcting the budget entirely moves utilisation from 87% to 81% and removes
+**nine** of 147 overloaded buckets — about 6%.
+
+So the residual infeasibility is **overwhelmingly bucket-level timing
+lumpiness**, not aggregate provisioning. The plan fits on average and clumps in
+time, and neither capacity sizing nor cost-based lot sizing addresses that
+because neither ever sees a per-bucket limit. That is the CLSP, and it remains
+out of scope exactly as stated.
+
+**Claim 2 does not move on the back of this**, and this finding is not folded
+into it. They are separate: one is "we detect that a plan cannot be made", the
+other is "we detect that a changeover budget is mis-set". The second is
+evidenced here; the first still stops short of producing feasible plans.

@@ -95,6 +95,16 @@ nobody.
    35 of 450 resource-buckets over. See the gaps.
 3. **Parameters that stay fitted rather than going stale.** A set-once reorder
    point loses 6.6 points of fill rate on intermittent demand and 8.0 on lumpy.
+4. **Detecting a mis-set changeover budget.** The demo plant is provisioned for
+   1,029 campaigns over the horizon; its own cost structure calls for 1,680 — a
+   **57% shortfall in changeover hours**, invisible in any utilisation report
+   because aggregate capacity looks adequate. Requires both a routing model and
+   a lot-sizing economics model to compare, which a spreadsheet has neither of.
+   See [`docs/rccp.md`](docs/rccp.md).
+
+   Stated separately from claim 2 on purpose. It does **not** explain the
+   infeasibility — correcting the budget entirely removes only 9 of 147
+   overloaded buckets.
 
 This third claim was **scheduled for removal before the evidence existed**. The
 demo history originally had no sustained demand drift, and on that data a stale
