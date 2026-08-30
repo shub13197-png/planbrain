@@ -110,9 +110,11 @@ Re-running `netreq` with cost-based lot sizing, against the same balanced plant:
 | average stock, value | 62.8 M | — | **72.8 M** |
 
 1,688 campaigns across 160 routed SKUs is roughly **one campaign per SKU every
-8.5 days** — close to, and arrived at independently of, the 14-day cycle the
-capacity sizing assumed. The absurdity was a missing input, exactly as diagnosed,
-and not a parameter that needed tuning.
+8.5 days**. The absurdity was a missing input, exactly as diagnosed, and not a
+parameter that needed tuning.
+
+That 8.5 days sits near the 14-day cycle the capacity sizing assumed, which is
+an independent-convergence result and is written up as its own finding below.
 
 The trade is now defensible and can be stated in one line: **a 31% reduction in
 capacity load for a 16% increase in working capital.** Whether that is worth
@@ -123,3 +125,70 @@ actually answer.
 does not move. Cost-based lot sizing was never going to reach feasibility,
 because it never sees a per-bucket capacity limit — that was stated up front in
 `docs/rccp.md` and it held.
+
+---
+
+# Finding: two independent rules landed near the same campaign length
+
+This is the strongest internal-consistency evidence in the repo, so it gets
+stated properly rather than in a parenthesis — including the part where it is
+weaker than it first looks.
+
+## What was independent about it
+
+| | commit | date | derived from |
+|---|---|---|---|
+| **14-day campaign allowance** | `3e0977d` | 26 Aug 2026 | annual demand volume, routing hours, a chosen 82% utilisation target |
+| **Unit costs → lot sizing** | `1ce6c66` | 27 Aug 2026 | raw material prices by type, a conversion adder, packaging by pack size, an hourly cost of capacity, a fixed 25% carrying rate |
+
+Both were committed **before** the run that produced any campaign count, in
+separate commits on separate days. Neither derivation references the other:
+capacity sizing never reads a cost, and the cost rule never reads a campaign
+frequency or a utilisation target. A reader can verify that by diffing the two
+commits.
+
+The realised interval — 8.5 days on average, **median 9.0** — was produced by
+Wagner-Whitin trading setup against holding, with no knowledge that anything had
+assumed 14.
+
+## Why it is worth something
+
+Nothing forced these to agree. The sizing rule could have assumed monthly
+campaigns and the economics could have called for daily ones; the two would then
+have been off by a factor of thirty and one of them would have been wrong. That
+they land within the same order of magnitude is evidence that the demo's
+economics are internally coherent — that its costs, its routing times and its
+demand volumes describe a plant that could plausibly exist.
+
+## Why it is weaker than it looks
+
+**Near is not equal, and 8.5 against 14 is a 39% gap.** Three things are worth
+saying rather than letting the headline stand:
+
+**The aggregate hides a wide spread.** Per-SKU intervals run from 2.8 days to
+90, with a median of 9.0 and an interquartile range of **6.4 to 18.0**. Only 45%
+of SKUs fall between 7 and 21 days. The 14-day assumption sits inside that
+interquartile range, on the high side of the median — which is a fair summary,
+and a much weaker statement than "the two numbers matched".
+
+**A single-point assumption cannot match a distribution.** Capacity sizing used
+one campaign frequency for every routing. The economics produce a spread because
+the setup-to-holding ratio varies enormously across the portfolio: unit costs
+range from 32 to 1,006 and setup times from 0.3 to 3.5 hours. Cheap fast movers
+economically want short runs; expensive slow movers want long ones. No single
+number was ever going to describe both.
+
+**The direction of the gap has a consequence.** Sizing provisioned changeover
+capacity for ~26 campaigns a SKU-year; the economics call for roughly 43. So the
+plant was sized for **fewer changeovers than the economics want**, and that
+under-provisioning is part of why the plan remains infeasible at 87% with 147
+buckets over. The convergence and the residual infeasibility are the same fact
+seen from two directions.
+
+## What would strengthen it
+
+A per-SKU campaign allowance in the sizing rule, derived from each routing's own
+setup-to-holding ratio rather than one portfolio-wide number. That would be a
+genuine test of whether the two rules agree SKU by SKU rather than on average.
+Not done, and it is the honest next step for anyone who wants to lean on this
+finding harder than the paragraph above does.

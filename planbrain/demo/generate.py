@@ -260,7 +260,15 @@ def _cost_parts(parts, bom):
                 cost[part.sku_id] = rolled + CONVERSION_ADDER
             else:
                 pack = part.name.rsplit(" ", 1)[-1]
-                cost[part.sku_id] = rolled + PACKAGING_COST.get(pack, 0.0)
+                if pack not in PACKAGING_COST:
+                    # Defaulting to zero would make packaging free for every
+                    # finished good the moment the naming convention shifted,
+                    # and the roll-up would still look plausible.
+                    raise ValueError(
+                        f"{part.name!r} has no recognised pack size; expected one "
+                        f"of {sorted(PACKAGING_COST)}"
+                    )
+                cost[part.sku_id] = rolled + PACKAGING_COST[pack]
 
     return [
         Part(

@@ -114,16 +114,99 @@ def test_terms_sum_to_the_total_change_per_series(report):
         assert sum(ladder.terms.values()) == pytest.approx(total_change(ladder))
 
 
+# --------------------------------------------------------------------------
+# falsification: which of these checks can actually fail?
+# --------------------------------------------------------------------------
+
+def test_the_term_sum_is_an_identity_and_cannot_fail():
+    """Demonstrates that the decomposition sum is NOT evidence.
+
+    Each term is a difference between adjacent rungs, so they collapse to the
+    observed gap whatever the rungs contain. Fed pure noise, the check still
+    passes. It is a guard against coding slips and nothing more, and reporting
+    it as verification would overstate what is known.
+    """
+    import random
+
+    rng = random.Random(1)
+    for _ in range(20):
+        r0, r1, r2, r3, r4 = (rng.uniform(-1000, 1000) for _ in range(5))
+        terms = {
+            "safety_stock": r1 - r0,
+            "lot_granularity": r2 - r1,
+            "forecast_error": r3 - r2,
+            "stockout_truncation": r4 - r3,
+        }
+        observed = r2 - r4
+        explained = -(terms["forecast_error"] + terms["stockout_truncation"])
+        assert observed - explained == pytest.approx(0.0, abs=1e-9)
+
+
+@pytest.mark.parametrize("injected", [0.02, 0.10, 0.40])
+def test_the_cross_check_residual_moves_with_an_injected_error(injected):
+    """The falsification the term sum cannot provide.
+
+    Corrupt the schedule handed to one engine and the residual must move, and
+    move roughly in proportion. If it did not, the two sides would not be
+    independent and the check would be measuring itself.
+    """
+    receipts = [120.0, 0.0, 0.0, 90.0, 0.0, 60.0, 0.0, 0.0]
+    demand = [20.0] * 8
+    opening = 30.0
+
+    clean = _residual(receipts, receipts, demand, opening)
+    assert clean == pytest.approx(0.0, abs=1e-9)
+
+    corrupted = [r * (1 + injected) for r in receipts]
+    moved = _residual(receipts, corrupted, demand, opening)
+    assert abs(moved) > abs(clean) + 1e-6, "an injected error must be visible"
+
+    # Proportional: doubling the injection roughly doubles the residual.
+    doubled = _residual(receipts, [r * (1 + injected * 2) for r in receipts],
+                        demand, opening)
+    assert abs(doubled) == pytest.approx(abs(moved) * 2, rel=0.15)
+
+
+def test_an_off_by_one_schedule_shift_is_caught():
+    """The error class the ladder exists to guard against: a series shifted by
+    one bucket looks entirely plausible and is entirely wrong."""
+    receipts = [120.0, 0.0, 0.0, 90.0, 0.0, 60.0, 0.0, 0.0]
+    shifted = [0.0] + receipts[:-1]
+    demand = [20.0] * 8
+
+    residual = _residual(receipts, shifted, demand, opening=30.0)
+    assert abs(residual) > 1.0
+
+
+def _residual(ladder_receipts, simulated_receipts, demand, opening):
+    """Ladder rung 4 against the simulation, with independently supplied schedules."""
+    from planbrain.reconcile import simulate_schedule
+
+    trace = replay_schedule(ladder_receipts, demand, opening=opening, truncate=True)
+    ladder_mean = sum(trace) / len(trace)
+    return ladder_mean - simulate_schedule(simulated_receipts, demand, opening=opening)
+
+
 def test_the_named_terms_account_for_the_observed_gap(report):
+    """The construction guard. Passes by algebra; see the identity test above.
+
+    Kept because it would catch a coding slip in how the terms are assembled,
+    but it is not evidence and the reported residual is no longer based on it.
+    """
+    assert report.construction_check == pytest.approx(0.0, abs=1e-6)
+
+
+def test_the_reported_residual_is_the_falsifiable_one(report):
     """The headline assertion, and the reason this item exists.
 
-    Not that the two numbers match -- they should not. That the difference
-    between them is exactly forecast error plus stockout truncation, with a
-    residual small enough to be float accumulation rather than an unexplained
-    effect.
+    Not that the two engines agree on stock -- they should not. That the ladder
+    and the service simulation, two separately written implementations of the
+    same physics, produce the same rung 4 for the same schedule.
     """
     assert report.residual_share <= RESIDUAL_TOLERANCE
     assert report.within_tolerance
+    for ladder in report.ladders:
+        assert ladder.cross_check_residual == pytest.approx(0.0, abs=1e-6)
 
 
 def test_a_residual_would_be_reported_not_hidden(report):

@@ -20,7 +20,15 @@ from ..forecast import classify, make_forecaster
 from ..forecast.metrics import ScoredMean, scored_mean
 from ..netreq.core import plan_item
 from ..simulate.policies import demand_statistics
-from .core import RUNGS, TERMS, Ladder, build_ladder, replay_schedule, total_change
+from .core import (
+    RUNGS,
+    TERMS,
+    Ladder,
+    build_ladder,
+    replay_schedule,
+    simulate_schedule,
+    total_change,
+)
 from .terms import item_factory, lot_for_lot
 
 __all__ = [
@@ -30,6 +38,7 @@ __all__ = [
     "build_ladder",
     "reconcile",
     "replay_schedule",
+    "simulate_schedule",
     "total_change",
 ]
 
@@ -49,6 +58,7 @@ class Reconciliation:
     by_pattern: dict
     residual: float
     residual_share: float
+    construction_check: float
     ladders: list
 
     @property
@@ -68,10 +78,10 @@ def reconcile(con, demo, *, scenario_id: int = 0, keys=None,
         history_start=demo.history_start, history_end=demo.history_end,
     )
     season_length = demo.calendar.seasonal_period
-    lead_times = {p.sku_id: p.lead_time_days for p in demo.parts}
     by_sku = {p.sku_id: p for p in demo.parts}
 
     ladders = []
+    unmatched = []
     for key in keys:
         series = history.get(key, [])
         if len(series) <= holdout_days:
@@ -80,12 +90,15 @@ def reconcile(con, demo, *, scenario_id: int = 0, keys=None,
         profile = classify(train)
         part = by_sku.get(key[0])
         if part is None:
+            # Dropping these silently would shrink the sample without saying so,
+            # and a reconciliation over an unnamed subset explains nothing.
+            unmatched.append(key)
             continue
 
         _, forecaster = make_forecaster(profile.pattern, season_length=season_length)
         forecast = forecaster(train, holdout_days)
         mean, _sd = demand_statistics(train)
-        lead_time = lead_times.get(key[0], 7)
+        lead_time = part.lead_time_days
 
         ladders.append(build_ladder(
             key=key,
@@ -100,6 +113,16 @@ def reconcile(con, demo, *, scenario_id: int = 0, keys=None,
             item_factory=item_factory(key[0], key[1]),
         ))
 
+    if unmatched:
+        raise ValueError(
+            f"{len(unmatched)} demand series have no part master entry, e.g. "
+            f"{unmatched[:3]}; the reference data and the facts disagree"
+        )
+    if not ladders:
+        raise ValueError(
+            "no series survived the holdout filter; a reconciliation over "
+            "nothing would report a residual of zero and mean it"
+        )
     return _aggregate(ladders, len(all_keys), holdout_days)
 
 
@@ -112,13 +135,23 @@ def _aggregate(ladders, portfolio, holdout_days) -> Reconciliation:
         for term in TERMS
     }
 
-    # The observed gap is plan minus replayed. The two terms that separate them
-    # are forecast error and truncation; safety stock and lot granularity explain
-    # the plan's own stock instead. Summing all four against the wrong gap would
-    # produce a residual that means nothing.
-    observed = (plan.value or 0.0) - (replayed.value or 0.0)
+    # The term sum is an ALGEBRAIC IDENTITY and cannot fail: each term is a
+    # difference between adjacent rungs, so they collapse to the gap whatever the
+    # rungs contain. Kept as a guard against coding slips, reported as such, and
+    # never as evidence.
+    if plan.value is None or replayed.value is None:
+        raise ValueError(
+            "nothing could be scored, so there is no gap to decompose; "
+            "reporting zero here would look like perfect agreement"
+        )
+    observed = plan.value - replayed.value
     explained = -(terms["forecast_error"] + terms["stockout_truncation"])
-    residual = observed - explained
+    construction_check = observed - explained
+
+    # The falsifiable residual: rung 4 from the ladder against rung 4 from a
+    # separately written engine. An error in the schedule, the opening balance
+    # or the truncation rule moves this. Nothing moves the term sum.
+    residual = sum(l.cross_check_residual for l in ladders) / len(ladders) if ladders else 0.0
     share = abs(residual) / abs(plan.value) if plan.value else 0.0
 
     by_pattern = {}
@@ -148,6 +181,7 @@ def _aggregate(ladders, portfolio, holdout_days) -> Reconciliation:
         },
         residual=residual,
         residual_share=share,
+        construction_check=construction_check,
         ladders=ladders,
     )
 

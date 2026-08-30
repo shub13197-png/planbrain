@@ -22,12 +22,21 @@ TERMS = ("safety_stock", "lot_granularity", "forecast_error", "stockout_truncati
 
 @dataclass(frozen=True)
 class Ladder:
-    """One series' rungs and the terms between them."""
+    """One series' rungs, the terms between them, and an independent check.
+
+    ``simulated_on_hand`` is rung 4 recomputed by ``simulate.replay`` -- a
+    separate implementation of the same physics. It exists because the term
+    decomposition **cannot fail**: every term is a difference between adjacent
+    rungs, so they sum to the gap as an algebraic identity regardless of what
+    the rungs contain. That sum is a guard against coding slips, not evidence.
+    This field is the falsifiable one.
+    """
 
     key: object
     pattern: str
     rungs: dict
     terms: dict
+    simulated_on_hand: float = 0.0
 
     @property
     def plan_on_hand(self) -> float:
@@ -46,6 +55,16 @@ class Ladder:
     @property
     def explained_gap(self) -> float:
         return -(self.terms["forecast_error"] + self.terms["stockout_truncation"])
+
+    @property
+    def cross_check_residual(self) -> float:
+        """Ladder rung 4 against the same rung computed by a different engine.
+
+        This is the number worth reporting. An error anywhere in the schedule,
+        the opening balance or the truncation rule moves it; nothing moves the
+        term sum.
+        """
+        return self.replayed_on_hand - self.simulated_on_hand
 
 
 def replay_schedule(receipts: list, demand: list, *, opening: float,
@@ -95,6 +114,7 @@ def build_ladder(*, key, pattern, forecast, actual, opening, lead_time_days,
     schedule = with_lots.planned_order_receipt
     untruncated = replay_schedule(schedule, actual, opening=opening, truncate=False)
     truncated = replay_schedule(schedule, actual, opening=opening, truncate=True)
+    simulated = simulate_schedule(schedule, actual, opening=opening)
 
     rungs = {
         "pure_netting": _mean(pure.projected_on_hand),
@@ -109,7 +129,28 @@ def build_ladder(*, key, pattern, forecast, actual, opening, lead_time_days,
         "forecast_error": rungs["against_actuals"] - rungs["with_lot_sizing"],
         "stockout_truncation": rungs["with_truncation"] - rungs["against_actuals"],
     }
-    return Ladder(key=key, pattern=pattern, rungs=rungs, terms=terms)
+    return Ladder(key=key, pattern=pattern, rungs=rungs, terms=terms,
+                  simulated_on_hand=simulated)
+
+
+def simulate_schedule(receipts: list, demand: list, *, opening: float) -> float:
+    """Average on-hand for the same schedule, via the service simulation.
+
+    Routed through ``simulate.replay`` deliberately: it is a separately written
+    implementation of the same physics, with its own ordering of receive, order
+    and serve. Agreement between the two is the only claim in this module that
+    could turn out false -- and it did once, catching an order placed at zero
+    lead time that was never collected.
+    """
+    from ..simulate.core import replay
+
+    outcome = replay(
+        demand,
+        lambda t, on_hand, inbound: receipts[t],
+        initial_on_hand=opening,
+        lead_time_days=0,
+    )
+    return outcome.average_on_hand
 
 
 def total_change(ladder: Ladder) -> float:

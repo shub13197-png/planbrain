@@ -91,11 +91,11 @@ def compare(
         history_start=demo.history_start, history_end=demo.history_end,
     )
     season_length = demo.calendar.seasonal_period
-    lead_times = {p.sku_id: p.lead_time_days for p in demo.parts}
-    lot_sizes = {p.sku_id: p.lot_qty for p in demo.parts}
+    by_sku = {p.sku_id: p for p in demo.parts}
 
     outcomes = {policy: {} for policy in POLICIES}
     patterns = {}
+    unmatched = []
 
     for key in keys:
         series = history.get(key, [])
@@ -105,8 +105,15 @@ def compare(
         profile = classify(train)
         patterns[key] = profile.pattern
 
-        lead_time = lead_times.get(key[0], 7)
-        lot = lot_sizes.get(key[0], 0.0)
+        part = by_sku.get(key[0])
+        if part is None:
+            # A demand series whose SKU is not in the part master is a broken
+            # import, not a SKU with default parameters. Defaulting a lead time
+            # would produce a service figure for a product that does not exist.
+            unmatched.append(key)
+            continue
+        lead_time = part.lead_time_days
+        lot = part.lot_qty
         mean, sd = demand_statistics(train)
         stale_window = train[: max(1, int(len(train) * STALE_FIT_FRACTION))]
         stale_mean, stale_sd = demand_statistics(stale_window)
@@ -142,6 +149,12 @@ def compare(
             outcomes[name][key] = replay(
                 holdout, policy, initial_on_hand=opening, lead_time_days=lead_time
             )
+
+    if unmatched:
+        raise ValueError(
+            f"{len(unmatched)} demand series have no part master entry, e.g. "
+            f"{unmatched[:3]}; the reference data and the facts disagree"
+        )
 
     return {
         "evaluated": len(patterns),

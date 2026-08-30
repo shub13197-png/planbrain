@@ -106,9 +106,40 @@ Average units on hand per series:
 | lot-sizing granularity | +322 |
 | forecast error | +524 |
 | stockout truncation | +213 |
-| **residual** | **−0.0  (0.0000% of plan)** |
 
-The residual is zero to floating point, well inside the 0.5% committed above.
+## The residual of −0.0 was worthless, and here is the proof
+
+The decomposition summing to the gap **cannot fail**. Every term is defined as a
+difference between adjacent rungs, so they collapse to the gap as an algebraic
+identity regardless of what the rungs contain. Feeding it five random numbers
+still produces a residual of zero — there is a test that does exactly that
+(`test_the_term_sum_is_an_identity_and_cannot_fail`).
+
+No injected error can move it either. Perturbing rung 4 by X changes the
+truncation term by +X and the observed gap by −X, and they cancel. It is a guard
+against a coding slip in how the terms are assembled, and nothing more.
+
+**A check that cannot fail is documentation, not verification.** Reporting that
+residual as evidence overstated what was known.
+
+### The falsifiable check, and what it survives
+
+The reported residual is now a **cross-engine** one: rung 4 from the ladder
+against rung 4 computed by `simulate.replay`, a separately written engine with
+its own ordering of receive, order and serve.
+
+| | construction check | cross-engine residual |
+|---|---|---|
+| fed random rungs | passes | n/a |
+| receipts scaled by +2% / +10% / +40% | passes | **moves, proportionally** |
+| schedule shifted one bucket | passes | **caught** |
+| zero-lead-time order lost | passes | **caught it in practice** |
+
+Both are now reported side by side and labelled, because the honest thing is to
+show which one is load-bearing rather than to quietly drop the weaker number.
+
+Value on the demo: **+0.0, or 0.0000% of plan**, well inside the 0.5% committed
+above — and this time that means something.
 
 ## What the decomposition actually says
 

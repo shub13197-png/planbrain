@@ -167,7 +167,15 @@ def cost_lot_sizing(routings, parts=None, *,
         if routing.setup_hours <= 0:
             continue
         if unit_cost:
-            holding = unit_cost.get(routing.sku_id, 0.0) * per_bucket_rate
+            if routing.sku_id not in unit_cost:
+                # Silently defaulting to zero holding would drop this SKU out of
+                # cost-based sizing and back to lot-for-lot, changing its policy
+                # with nothing to show for it.
+                raise ValueError(
+                    f"routing for sku {routing.sku_id} has no costed part; "
+                    f"cost-based lot sizing cannot price its holding"
+                )
+            holding = unit_cost[routing.sku_id] * per_bucket_rate
             setup = routing.setup_hours * capacity_cost_per_hour
         else:
             holding = routing.hours_per_unit * per_bucket_rate

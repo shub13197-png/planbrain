@@ -69,7 +69,15 @@ def make_forecaster(pattern: str, *, season_length: int, fallbacks: Fallbacks = 
     backtest harness uses, so the model that scores is literally the model that
     runs in production.
     """
-    name = MODEL_FOR_PATTERN.get(pattern, "SeasonalNaive")
+    if pattern not in MODEL_FOR_PATTERN:
+        # classify() returns a closed set, so an unrecognised pattern is a typo
+        # or a stale caller. Falling back to naive would quietly degrade every
+        # forecast in the run while the report still showed a model mix.
+        raise ValueError(
+            f"no model for demand pattern {pattern!r}; expected one of "
+            f"{sorted(MODEL_FOR_PATTERN)}"
+        )
+    name = MODEL_FOR_PATTERN[pattern]
     fallbacks = fallbacks if fallbacks is not None else Fallbacks()
 
     if name == "SeasonalNaive":

@@ -1087,3 +1087,68 @@ evidence existed, and what changed.
 **Why:** a claim that survived a stated kill condition is worth more than one
 that was never at risk. Recording only the surviving result would discard the
 part that makes it credible.
+
+---
+
+# Item 8 follow-up — falsification and the second no-op sweep
+
+## 2026-08-30 — PATTERN: a check that cannot fail is documentation, not verification
+
+**Found by self-audit.** The reconciliation's headline residual of −0.0 was an
+algebraic identity. Each term is a difference between adjacent rungs, so they
+sum to the gap whatever the rungs contain; five random numbers produce the same
+zero. No injected error could move it, because both sides derived from the same
+rungs.
+
+**Decided.** The reported residual is now the **cross-engine** one — ladder rung
+4 against the same rung from `simulate.replay`, a separately written
+implementation. It moves proportionally with an injected error, catches an
+off-by-one schedule shift, and caught a real bug in practice.
+
+**Both are reported, side by side and labelled.** Quietly dropping the weaker
+number would hide that the earlier result had been overstated.
+
+**The pattern, which generalises:** when presenting a set of checks as evidence,
+identify which one can actually fail. Ask what change would break it; if nothing
+plausible would, say so. Prefer two independent paths to the same number. Try to
+break the headline result once, deliberately, before publishing it.
+
+## 2026-08-30 — Second sweep for results that fail upward
+
+Four instances of this class had been caught one at a time across items 4-8. The
+rest were hunted in one pass. Six more masking defaults found and made loud:
+
+| site | what the default hid |
+|---|---|
+| `PACKAGING_COST.get(pack, 0.0)` | packaging free for **every** finished good if the naming convention shifted |
+| `unit_cost.get(sku, 0.0)` | a SKU silently dropped back to lot-for-lot |
+| `MODEL_FOR_PATTERN.get(pattern, "SeasonalNaive")` | every forecast degraded to naive while the model mix still looked populated |
+| `lead_times.get(sku, 7)` in `simulate` | a service figure for a product not in the part master |
+| `by_sku.get(sku)` then `continue` in `reconcile` | series dropped silently, shrinking the sample without saying so |
+| `(plan.value or 0.0)` | an unscored portfolio reading as perfect agreement |
+
+**Deliberately left alone**, and this is the judgement that makes the sweep more
+than a rule: `read_facts`' sparse lookup, `explode`'s missing independent demand
+or component stock, `rccp`'s resource with no routed work. There absence is
+*meaningful* and the default encodes it. Hardening those would turn ordinary
+sparsity into an error.
+
+Covered by `tests/test_no_silent_defaults.py`, including a test asserting the
+legitimate sparse lookups still behave sparsely.
+
+## 2026-08-30 — FINDING: two independent rules landed near the same campaign length
+
+Promoted out of a parenthesis into `docs/unit-costs.md` with both commit hashes,
+`3e0977d` (14-day campaign allowance, 26 Aug) and `1ce6c66` (unit costs, 27 Aug),
+so a reader can verify the two derivations never reference each other.
+
+**And the caveat, stated at the same weight as the finding.** 8.5 against 14 is
+a 39% gap, the aggregate hides a per-SKU spread of 2.8 to 90 days with a median
+of 9.0 and an interquartile range of 6.4 to 18.0, and only 45% of SKUs fall
+between 7 and 21. A single-point assumption cannot match a distribution produced
+by setup-to-holding ratios that vary across the portfolio.
+
+**The gap has a consequence worth naming:** sizing provisioned for ~26 campaigns
+a SKU-year where the economics want ~43, so the plant was sized for fewer
+changeovers than it needs. The convergence and the residual infeasibility at 87%
+are the same fact from two directions.

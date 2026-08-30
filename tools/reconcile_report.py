@@ -85,8 +85,12 @@ def _print(report) -> None:
     print("the difference, decomposed:")
     for term, value in report.terms.items():
         print(f"  {TERM_LABELS[term]:26s} {value:+12,.0f}")
-    print(f"  {'residual':26s} {report.residual:+12,.1f}"
-          f"   ({report.residual_share:.4%} of plan)")
+    print(f"  {'sum of terms':26s} {'-> the gap, by algebra':>12s}")
+    print()
+    print(f"  {'construction check':26s} {report.construction_check:+12,.1f}"
+          f"   identity: cannot fail")
+    print(f"  {'cross-engine residual':26s} {report.residual:+12,.1f}"
+          f"   ({report.residual_share:.4%} of plan) <- the falsifiable one")
 
     print()
     print(f"{'demand class':14s} {'n':>3s} {'plan':>9s} {'replayed':>9s} "
@@ -107,8 +111,17 @@ def _print(report) -> None:
     print()
     print("The two engines are NOT expected to agree. netreq computes")
     print("deterministic net requirements against a forecast; the simulation")
-    print("replays realised demand with lost sales. The test is that every part")
-    print("of the difference has a name and the names add up.")
+    print("replays realised demand with lost sales.")
+    print()
+    print("TWO RESIDUALS, and only one is evidence. The construction check is an")
+    print("algebraic identity -- each term is a difference between adjacent")
+    print("rungs, so they sum to the gap whatever the rungs contain. Fed pure")
+    print("noise it still reads zero. It is a guard against coding slips.")
+    print()
+    print("The cross-engine residual compares rung 4 against the same rung")
+    print("computed by the service simulation, a separately written engine. An")
+    print("injected error moves it in proportion; an off-by-one shift in the")
+    print("schedule is caught. That one can fail, and it did once.")
     if not report.within_tolerance:
         print()
         print("RESIDUAL EXCEEDS TOLERANCE. Something in the difference is")
