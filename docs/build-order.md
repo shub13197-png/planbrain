@@ -19,6 +19,7 @@ as the historical input — where the two disagree, this file wins.
 | 12 | Importer | done — `f3819a1` |
 | **13** | **README, demo, manual code audit** | **done** |
 | 14 | UI grid | not started |
+| 14 | Claim audit + published-figure pins | done |
 | — | CLSP, DRP, Timefold | deferred with reason; see the docs for each |
 
 ## Change: the service backtest was promoted to item 5

@@ -20,4 +20,9 @@ jobs:
       - name: No direct fact-table reads
         run: python -m tools.check_fact_access
 
+      # Tests protect code; pins protect claims. A published figure going
+      # stale changes no behaviour, so nothing else here would notice.
+      - name: Published figures match the code and the prose
+        run: pytest -q tests/test_published_numbers.py
+
       - run: pytest -q

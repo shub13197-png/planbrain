@@ -371,11 +371,21 @@ bound rather than an optimum.
 Greedy is within a third of a percentage point of a bound no real solver could
 reach, because the bound ignores two constraints a solver would have to respect.
 
-**This is what makes the Timefold deferral a measurement rather than an
-opinion.** A solver run here would report an improvement over a baseline that
-was never the binding constraint, and the most it could possibly claim on
-fairness is 0.0033. The constraint is the work available and the ledger's
-opening spread, neither of which an optimiser can change.
+**This made the Timefold deferral look like a measurement rather than an
+opinion. The claim audit narrowed it.**
+
+0.0033 is the seed-7 figure. Across five seeds the headroom runs **0.00 to
+0.03**, clearing the 0.01 bar on only three of five
+([`docs/claim-audit.md`](claim-audit.md)). On some datasets of this shape a
+solver has ten times the room this page originally implied, and 0.03 Jain is not
+nothing on a fleet sitting at 0.8865.
+
+So the honest statement is narrower: **on this dataset a solver has almost no
+room on fairness; on others of the same shape it has some.**
+
+The deferral still stands, for a reason that does not depend on the number:
+greedy has no answer at all once fairness must be traded against distance cost,
+and that is the problem a solver is actually for.
 
 Timefold earns entry when fairness must be traded against **distance cost** —
 a genuinely multi-objective problem where greedy has no answer at all. That

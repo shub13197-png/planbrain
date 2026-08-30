@@ -8,11 +8,40 @@ We plan. We do not transact.
 
 ---
 
+## Start here: what this project is actually offering
+
+**The engines are ordinary. The method is not.**
+
+Measured against a well-tuned reorder point on a 222-SKU portfolio, this tool
+wins clearly on **one** demand pattern, loses on another, and is close to a tie
+overall. **A well-tuned spreadsheet rule is hard to beat**, and most planning
+software that claims otherwise has not checked carefully.
+
+What this repo offers instead is a way of working that makes its own numbers
+trustworthy:
+
+* **Every threshold committed before the run**, in its own commit, so `git log`
+  proves the rule was not fitted to the result.
+* **Kill conditions stated in advance.** One claim was scheduled for removal
+  before its evidence existed, and survived.
+* **A headline check that failed, published anyway.** The reconciliation's
+  residual turned out to be an algebraic identity that could not fail. Both the
+  worthless number and its replacement are still reported, side by side.
+* **A retracted claim, corrected in place.** "Lumpy demand is where we excel"
+  died on its own full-portfolio run. The retraction is in the README, not a
+  commit message.
+* **Four negative results kept in**, because they are the useful ones.
+
+If you are evaluating planning tools, the fill rates below are worth less to you
+than the fact that they were produced this way. Anyone can show you a number.
+
+---
+
 ## Does it actually work? Here is the evidence.
 
 Every planning tool claims better forecasts. That claim is cheap, so this repo
-leads with the measurement instead — including the part where a spreadsheet rule
-matches us.
+leads with the measurement instead — including the parts where a spreadsheet rule
+matches us and where it beats us.
 
 The demo is a fake lubricant blending plant: 200 SKUs, three BOM levels, 18
 months of deliberately messy daily history. The test replays a held-out 90-day
@@ -42,6 +71,11 @@ continuously tuned spreadsheet rule, for roughly 48% more inventory.** That is a
 real gain and not a large one, and whether it is worth the working capital
 depends on what a stockout costs the customer — which this repo cannot price.
 
+**Said plainly: a well-tuned reorder point is hard to beat.** After ten build
+items of engine work, the results have thinned to one demand pattern plus a
+comparison against a policy nobody would ship. That is the honest finding, and
+it is stated here rather than left for a reader to infer from the tables.
+
 Against a **stale** reorder point — parameters set once and never revisited,
 which is what most SMEs actually run — the gap is 2.3 points.
 
@@ -61,6 +95,26 @@ Fill rate / average on-hand, by demand pattern:
 
 **Intermittent demand is where this tool is ahead** — 97.3% fill against a tuned
 reorder point's 95.6%, bought with about 12% more stock.
+
+### Every claim re-run across five seeds
+
+Sampling killed one claim, so the rest were audited the same way — full
+portfolio, five seeds ([`docs/claim-audit.md`](docs/claim-audit.md)):
+
+| claim | mean | range | verdict |
+|---|---|---|---|
+| Intermittent: fitted beats a tuned reorder point | +2.20 pts | 1.64 to 2.66 | holds 5/5 |
+| ~~Lumpy: fitted beats a tuned reorder point~~ | −1.15 pts | −1.60 to −0.68 | **0/5, retracted** |
+| Staleness costs fill rate | +2.37 pts | 1.89 to 3.44 | holds 5/5 |
+| Plan is not capacity-feasible | 32.8% of buckets | 30.7 to 37.3 | holds 5/5 |
+| Greedy fairness leaves a solver little room | 0.01 Jain | 0.00 to 0.03 | **3/5, weakened** |
+
+The staleness result was the one at risk — the drift that rescued it was added
+in a single pass on a single seed. It holds on all five.
+
+The fairness one did not fare as well, and is corrected in `docs/haulplan.md`:
+the "a solver could add almost nothing" figure came from seed 7, and across
+seeds the headroom is up to ten times larger.
 
 ### What changed when we stopped sampling
 
@@ -238,6 +292,7 @@ quietly excluding the hard ones is how a portfolio average gets improved.
 | [`docs/haulplan.md`](docs/haulplan.md) | The long-haul fairness ledger, and an ordering bug it caught |
 | [`docs/constants.md`](docs/constants.md) | Every committed constant, which item set it, and what it must agree with |
 | [`docs/audit.md`](docs/audit.md) | Manual code audit: what was removed and what was left alone |
+| [`docs/claim-audit.md`](docs/claim-audit.md) | Every claim re-run across five seeds, and the one it weakened |
 | [`docs/unit-costs.md`](docs/unit-costs.md) | How costs are derived, written before they were computed |
 | [`docs/demo.md`](docs/demo.md) | The seeded dataset |
 
@@ -256,7 +311,7 @@ or without Docker:
 ```bash
 pip install -e ".[dev]"
 python -m tools.demo                       # the same end-to-end run
-pytest -q                                  # 459 tests
+pytest -q                                  # 466 tests
 python -m tools.check_fact_access          # the CI gate
 python -m tools.seed_demo                  # build the demo database
 python -m tools.service_report --sample 40 # the evidence above

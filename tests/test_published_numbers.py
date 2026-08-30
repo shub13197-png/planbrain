@@ -29,6 +29,7 @@ from planbrain.forecast import demand_keys
 from planbrain.haulplan import Ledger, jain_index
 from planbrain.haulplan.assign import assign
 from planbrain.haulplan.fairness import ceiling
+from tools.published import Computed, FIGURES
 
 SCHEMA = Path(__file__).resolve().parents[1] / "planbrain" / "facts" / "schema.sql"
 SEED = 7
@@ -110,6 +111,93 @@ def test_greedy_stays_within_a_whisker_of_the_ceiling(pipeline):
 
     headroom = ceiling(opening, work) - jain_index(ledger.distribution())
     assert 0 <= headroom < 0.01
+
+
+# --------------------------------------------------------------------------
+# the register: pins protect claims, tests protect code
+# --------------------------------------------------------------------------
+
+def test_every_published_figure_appears_where_it_says_it_does():
+    """register -> docs. A doc that drifts from the register fails.
+
+    This is the link the behaviour tests cannot provide. 449 passing tests did
+    not notice when every published number went stale, because the behaviour had
+    not changed -- only the dataset had.
+    """
+    root = Path(__file__).resolve().parents[1]
+    missing = []
+    for figure in FIGURES:
+        for where in figure.where:
+            text = (root / where).read_text(encoding="utf-8")
+            if figure.literal not in text:
+                missing.append(f"{figure.key}: {figure.literal!r} not in {where}")
+    assert missing == [], "\n".join(missing)
+
+
+def test_every_published_figure_still_matches_a_fresh_run(pipeline):
+    """register -> code. The other half of the chain.
+
+    Recomputes the whole portfolio, so it is the slowest test here and the only
+    one that would have caught the staleness. Worth its runtime: the alternative
+    is a reader catching it.
+    """
+    con, demo, capacity = pipeline
+
+    report = simulate.compare(con, demo, keys=demand_keys(demo), safety_days=7.0)
+    policies = report["policies"]
+
+    def pattern(policy, name):
+        return policies[policy].by_pattern[name]["fill_rate"].value
+
+    load = sum(d["load_hours"] for d in capacity["resources"].values())
+    available = sum(d["capacity_hours"] for d in capacity["resources"].values())
+
+    ledger = Ledger.opening(demo.truck_ytd_long_haul_km)
+    opening = list(demo.truck_ytd_long_haul_km.values())
+    assign(demo.trips, demo.trucks, ledger)
+    work = sum(t.distance_km for t in demo.trips if t.is_long_haul)
+
+    computed = Computed({
+        "parts": len(demo.parts),
+        "demand_series": len(demand_keys(demo)),
+        "history_days": (demo.history_end - demo.history_start).days + 1,
+        "fitted_fill": policies["forecast"].fill_rate.value,
+        "tuned_fill": policies["reorder_point"].fill_rate.value,
+        "stale_fill": policies["reorder_point_stale"].fill_rate.value,
+        "naive_fill": policies["naive_zero"].fill_rate.value,
+        "intermittent_fitted": pattern("forecast", "intermittent"),
+        "intermittent_tuned": pattern("reorder_point", "intermittent"),
+        "lumpy_fitted": pattern("forecast", "lumpy"),
+        "lumpy_tuned": pattern("reorder_point", "lumpy"),
+        "naive_intermittent": pattern("naive_zero", "intermittent"),
+        "naive_lumpy": pattern("naive_zero", "lumpy"),
+        "rccp_utilisation": load / available,
+        "rccp_overloaded": sum(
+            len(d["overloaded_buckets"]) for d in capacity["resources"].values()
+        ),
+        "fairness_opening": jain_index(opening),
+        "fairness_after": jain_index(ledger.distribution()),
+        "fairness_ceiling": ceiling(opening, work),
+    })
+
+    drifted = [
+        f"{f.key}: docs say {f.value}, a fresh run gives {actual:.4f}"
+        for f, actual in computed.mismatches()
+    ]
+    assert drifted == [], (
+        "Published figures are stale. The docs are wrong, not the code -- "
+        "re-run the reports and update tools/published.py and the prose.\n"
+        + "\n".join(drifted)
+    )
+
+
+def test_the_register_covers_the_headline_claims():
+    """A figure removed from the register stops being checked. The claims that
+    matter most must stay covered."""
+    keys = {f.key for f in FIGURES}
+    for required in ("fitted_fill", "tuned_fill", "intermittent_fitted",
+                     "lumpy_fitted", "lumpy_tuned", "naive_intermittent"):
+        assert required in keys
 
 
 def test_service_claims_are_not_quoted_from_a_sample():
