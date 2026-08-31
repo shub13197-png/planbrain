@@ -20,7 +20,8 @@ as the historical input — where the two disagree, this file wins.
 | **13** | **README, demo, manual code audit** | **done** |
 | 14 | UI grid | not started |
 | 14 | Claim audit + published-figure pins | done — `3bbbfc4` |
-| 15 | `docs/method.md` and the synthetic-world limit | done |
+| 15 | `docs/method.md` and the synthetic-world limit | done — `3e6ed4b` |
+| 16 | Offline audit, socket guard, `--network=none` CI | done |
 | — | CLSP, DRP, Timefold | deferred with reason; see the docs for each |
 
 ## Change: the service backtest was promoted to item 5

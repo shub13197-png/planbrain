@@ -201,8 +201,19 @@ trucks spreads long-haul work across more of them, which could improve fairness
 
 ## Scope limits
 
-* **No routing.** Distances arrive from the caller, from an OSRM matrix in
-  production. `haulplan` never computes a road distance.
+* **No routing.** Distances arrive from the caller. `haulplan` never computes a
+  road distance.
+
+  **Constraint on entry, recorded before the dependency is added:** when real
+  road distances are needed, the offline-compatible answer is a **self-hosted
+  OSRM with a local OSM extract**, not a hosted routing API. A hosted API would
+  send customer origin-destination pairs off the machine, which the offline
+  guarantee forbids outright — and which would leak the depot network and
+  delivery pattern, commercially sensitive quite apart from the guarantee.
+
+  Self-hosting means an extra service and a multi-GB regional extract in the
+  deployment. That cost belongs in the decision to adopt routing, not in a
+  discovery after it. See `docs/offline.md`.
 * **No sequencing within a bucket.** A truck does one trip a bucket, or none.
   Multi-trip days and time windows are vehicle routing, which is what PyVROOM
   and Timefold are for, and neither is in this first pass.

@@ -26,3 +26,30 @@ jobs:
         run: pytest -q tests/test_published_numbers.py
 
       - run: pytest -q
+
+  offline:
+    # The falsifiable version of "runs fully offline". Not a claim about the
+    # code: the container has no network interface at all, so a leak cannot
+    # succeed regardless of what any dependency tries. If this job passes, the
+    # pipeline demonstrably needs nothing from the network.
+    #
+    # Build needs the network to install dependencies. The RUN steps below do
+    # not, and that is the whole point of separating them.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image (network allowed -- this is install time)
+        run: docker build -t planbrain:offline .
+
+      - name: Full pipeline with no network interface
+        run: docker run --rm --network=none planbrain:offline python -m tools.demo
+
+      - name: Test suite with no network interface
+        run: docker run --rm --network=none planbrain:offline pytest -q
+
+      - name: The in-process guard blocks what the container would have allowed
+        # Runs WITH a network available on purpose: proves engage() is doing the
+        # work, rather than the container silently covering for a guard that
+        # never engaged.
+        run: docker run --rm planbrain:offline pytest -q tests/test_offline.py

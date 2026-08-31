@@ -34,3 +34,8 @@ build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The repo root, so `tools` imports the same way inside the container as it does
+# from a checkout. Without this the suite collects locally and fails in the
+# image -- which is exactly what the offline CI job found, because nothing had
+# ever run the tests in the packaged environment before.
+pythonpath = ["."]

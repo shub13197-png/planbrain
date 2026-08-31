@@ -18,6 +18,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# Before any planning import, so that anything reaching the network AT IMPORT
+# TIME trips it too -- a version check on first import is a real pattern and a
+# guard engaged later would never see it. See docs/offline.md.
+from planbrain.offline import engage  # noqa: E402
+
+engage()
+
 from planbrain import netreq, rccp, simulate  # noqa: E402
 from planbrain.demo import build_demo, populate  # noqa: E402
 from planbrain.forecast import demand_keys  # noqa: E402
@@ -43,6 +50,7 @@ def main(argv=None) -> int:
 
     print("Planning Brain - end-to-end demo")
     print("A fake lubricant blending plant. Every number below is computed now.")
+    print("Outbound network access is blocked in-process; nothing here calls out.")
 
     con = sqlite3.connect(":memory:")
     con.execute("PRAGMA foreign_keys = ON")

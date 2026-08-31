@@ -214,6 +214,25 @@ looks adequate, and it needs both a routing model and a lot-sizing economics
 model to see. It explains **fewer than one overloaded bucket in ten**, so it is
 a capability rather than an explanation.
 
+### Audited property, not a claim
+
+**5. Runs fully offline. No data leaves the machine.**
+
+This one is different in kind from the four above. They are measurements that
+could come out differently on your data. This is a property of the build, and it
+is verified rather than argued:
+
+| check | what it establishes | where |
+|---|---|---|
+| CI runs the pipeline and all 483 tests with `--network=none` | the pipeline needs nothing from the network — no interface exists, so a leak cannot succeed | `.github/workflows/ci.yml`, job `offline` |
+| In-process socket block, tested **with** a network available | a stray call fails loudly on a customer's laptop rather than succeeding in silence | `tests/test_offline.py::test_the_whole_pipeline_runs_with_sockets_blocked` |
+| Dependency audit across all 29 runtime distributions | no telemetry, no version checks, no model downloads; the two conditional paths checked individually | [`docs/offline.md`](docs/offline.md) |
+
+Both halves matter. The container proves the pipeline does not *need* the
+network; the in-process guard covers the machine where the network *works*. The
+gaps the guard cannot cover — native code, subprocesses — are named in the audit
+rather than glossed.
+
 **Not claimed:** better forecast accuracy across a portfolio. The numbers above
 are why — and see the correction on lumpy demand.
 
@@ -316,6 +335,7 @@ quietly excluding the hard ones is how a portfolio average gets improved.
 | [`docs/constants.md`](docs/constants.md) | Every committed constant, which item set it, and what it must agree with |
 | [`docs/audit.md`](docs/audit.md) | Manual code audit: what was removed and what was left alone |
 | [`docs/method.md`](docs/method.md) | **How this was built — written to transfer to any measurement work** |
+| [`docs/offline.md`](docs/offline.md) | The offline audit: every dependency, both conditional paths, and what the guard cannot cover |
 | [`docs/claim-audit.md`](docs/claim-audit.md) | Every claim re-run across five seeds, and the one it weakened |
 | [`docs/unit-costs.md`](docs/unit-costs.md) | How costs are derived, written before they were computed |
 | [`docs/demo.md`](docs/demo.md) | The seeded dataset |
@@ -328,6 +348,7 @@ weeks.
 
 ```bash
 docker compose up                          # the whole pipeline, ~1 minute
+docker run --rm --network=none planbrain python -m tools.demo   # same, no network at all
 ```
 
 or without Docker:
@@ -335,7 +356,7 @@ or without Docker:
 ```bash
 pip install -e ".[dev]"
 python -m tools.demo                       # the same end-to-end run
-pytest -q                                  # 466 tests
+pytest -q                                  # 483 tests
 python -m tools.check_fact_access          # the CI gate
 python -m tools.seed_demo                  # build the demo database
 python -m tools.service_report --sample 40 # the evidence above
