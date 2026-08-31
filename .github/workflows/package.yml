@@ -1,0 +1,139 @@
+name: package
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+# No cross-compilation. Each installer is built on its own OS, because
+# cross-compiled binaries with native extensions -- numpy, scipy, statsmodels --
+# fail in ways that surface on a customer's machine rather than in CI. Tauri
+# also appends the host target triple to the sidecar name, so the artifact only
+# matches the runner that produced it.
+
+jobs:
+  # ---------------------------------------------------------------------
+  # The offline guarantee, checked against the PACKAGED ARTIFACT.
+  #
+  # This job exists because the earlier offline audit was verified in a
+  # checkout, and the packaged environment turned out to differ -- the test
+  # suite could not even import `tools` there. A guarantee verified in the
+  # wrong environment is not verified.
+  #
+  # Linux only, and that limit is stated rather than implied: `--network=none`
+  # needs a container, and GitHub's Windows and macOS runners cannot remove the
+  # interface from a native process. Those platforms get the in-process guard
+  # assertion instead, in `sidecar` below, which is weaker and is labelled as
+  # such in docs/offline.md.
+  # ---------------------------------------------------------------------
+  offline-artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+
+      - name: Build the sidecar (network allowed -- install time)
+        run: |
+          pip install -e ".[dev]" pyinstaller
+          pyinstaller packaging/backend.spec --noconfirm \
+            --distpath build/dist --workpath build/work
+
+      - name: Size against the committed budget
+        run: python packaging/check_size.py build/dist/planbrain-backend
+
+      - name: Package the artifact into a container with no network
+        run: |
+          printf 'FROM gcr.io/distroless/base-debian12\nCOPY dist /app\n' \
+            > build/Dockerfile.artifact
+          docker build -f build/Dockerfile.artifact -t planbrain-sidecar build
+
+      - name: Run the packaged sidecar with no network interface
+        run: |
+          printf '%s\n%s\n%s\n' \
+            '{"id":1,"method":"ping"}' \
+            '{"id":2,"method":"demo.build","params":{"seed":7}}' \
+            '{"id":3,"method":"shutdown"}' \
+          | docker run --rm -i --network=none planbrain-sidecar \
+              /app/planbrain-backend/planbrain-backend \
+          | tee /tmp/out.jsonl
+          python packaging/check_offline_run.py /tmp/out.jsonl
+
+  # ---------------------------------------------------------------------
+  # One sidecar per OS. Also asserts the in-process guard on Windows and
+  # macOS, where the container check above cannot run.
+  # ---------------------------------------------------------------------
+  sidecar:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, triple: x86_64-pc-windows-msvc,   ext: ".exe" }
+          - { os: macos-latest,   triple: aarch64-apple-darwin,     ext: ""     }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+
+      - run: pip install -e ".[dev]" pyinstaller
+      - run: pyinstaller packaging/backend.spec --noconfirm --distpath build/dist --workpath build/work
+
+      - run: python packaging/check_size.py build/dist/planbrain-backend
+
+      - name: The packaged sidecar reports the guard engaged
+        shell: bash
+        run: |
+          printf '%s\n%s\n' '{"id":1,"method":"ping"}' '{"id":2,"method":"shutdown"}' \
+          | ./build/dist/planbrain-backend/planbrain-backend${{ matrix.ext }} \
+          | tee out.jsonl
+          python packaging/check_offline_run.py out.jsonl --no-demo
+
+      - name: Name the sidecar for Tauri (target triple suffix)
+        shell: bash
+        run: |
+          mkdir -p desktop/src-tauri/binaries
+          cp -r build/dist/planbrain-backend desktop/src-tauri/binaries/tree
+          mv desktop/src-tauri/binaries/tree/planbrain-backend${{ matrix.ext }} \
+             desktop/src-tauri/binaries/planbrain-backend-${{ matrix.triple }}${{ matrix.ext }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sidecar-${{ matrix.triple }}
+          path: desktop/src-tauri/binaries
+
+  # ---------------------------------------------------------------------
+  # Installers. Unsigned for now -- see docs/install.md, which documents the
+  # Gatekeeper and SmartScreen warnings rather than pretending they will not
+  # appear.
+  # ---------------------------------------------------------------------
+  installer:
+    needs: sidecar
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, triple: x86_64-pc-windows-msvc, target: msi }
+          - { os: macos-latest,   triple: aarch64-apple-darwin,   target: dmg }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: sidecar-${{ matrix.triple }}
+          path: desktop/src-tauri/binaries
+
+      - run: npm install
+        working-directory: desktop
+
+      - run: npx tauri build --bundles ${{ matrix.target }}
+        working-directory: desktop
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: planbrain-${{ matrix.target }}
+          path: desktop/src-tauri/target/release/bundle/**/*.${{ matrix.target }}

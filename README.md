@@ -224,7 +224,7 @@ is verified rather than argued:
 
 | check | what it establishes | where |
 |---|---|---|
-| CI runs the pipeline and all 483 tests with `--network=none` | the pipeline needs nothing from the network — no interface exists, so a leak cannot succeed | `.github/workflows/ci.yml`, job `offline` |
+| CI runs the pipeline and all 534 tests with `--network=none` | the pipeline needs nothing from the network — no interface exists, so a leak cannot succeed | `.github/workflows/ci.yml`, job `offline` |
 | In-process socket block, tested **with** a network available | a stray call fails loudly on a customer's laptop rather than succeeding in silence | `tests/test_offline.py::test_the_whole_pipeline_runs_with_sockets_blocked` |
 | Dependency audit across all 29 runtime distributions | no telemetry, no version checks, no model downloads; the two conditional paths checked individually | [`docs/offline.md`](docs/offline.md) |
 
@@ -336,6 +336,8 @@ quietly excluding the hard ones is how a portfolio average gets improved.
 | [`docs/audit.md`](docs/audit.md) | Manual code audit: what was removed and what was left alone |
 | [`docs/method.md`](docs/method.md) | **How this was built — written to transfer to any measurement work** |
 | [`docs/offline.md`](docs/offline.md) | The offline audit: every dependency, both conditional paths, and what the guard cannot cover |
+| [`docs/packaging.md`](docs/packaging.md) | Tauri shell, PyInstaller sidecar, and why IPC is stdio not localhost |
+| [`docs/install.md`](docs/install.md) | Installing, including the Gatekeeper and SmartScreen warnings you will see |
 | [`docs/claim-audit.md`](docs/claim-audit.md) | Every claim re-run across five seeds, and the one it weakened |
 | [`docs/unit-costs.md`](docs/unit-costs.md) | How costs are derived, written before they were computed |
 | [`docs/demo.md`](docs/demo.md) | The seeded dataset |
@@ -356,7 +358,7 @@ or without Docker:
 ```bash
 pip install -e ".[dev]"
 python -m tools.demo                       # the same end-to-end run
-pytest -q                                  # 483 tests
+pytest -q                                  # 534 tests
 python -m tools.check_fact_access          # the CI gate
 python -m tools.seed_demo                  # build the demo database
 python -m tools.service_report --sample 40 # the evidence above

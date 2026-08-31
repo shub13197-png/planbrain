@@ -16,7 +16,7 @@ having audited correctly, or on the audit staying true as versions move.
 
 ## Result
 
-**The full pipeline and all 483 tests run with no network interface.** Verified
+**The full pipeline and all 534 tests run with no network interface.** Verified
 by `docker run --network=none`, not by inspection.
 
 The in-process guard is verified separately **with a network available**, so
@@ -84,6 +84,25 @@ and anything else in the closure all bottom out in `socket`.
 
 Each of those is exactly what the `--network=none` container check covers, which
 is why the guarantee rests on both and not either alone.
+
+## The packaged artifact is checked, not just the checkout
+
+The first version of this audit ran in a checkout, and the packaged environment
+turned out to differ — the test suite could not even import `tools` there. So
+`.github/workflows/package.yml` builds the sidecar, puts it in a container with
+**no network interface**, and runs it:
+
+    docker run --rm -i --network=none planbrain-sidecar /app/planbrain-backend/...
+
+`packaging/check_offline_run.py` then asserts the handshake reported
+`offline: true` and every request succeeded — because the process exits 0 whether
+or not the guard engaged and whether or not every request failed.
+
+**Stated limit:** `--network=none` needs a container, so this runs on Linux.
+GitHub's Windows and macOS runners cannot remove the interface from a native
+process, so those platforms assert the in-process guard from the packaged
+binary's handshake instead. That is weaker, and it is labelled weaker rather
+than described as the same check.
 
 ## Where the guard is engaged
 

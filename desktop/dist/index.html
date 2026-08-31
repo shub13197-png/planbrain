@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Planning Brain</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 1.5rem; }
+  h1 { font-size: 1.1rem; margin: 0 0 .25rem; }
+  .status { font-size: .85rem; opacity: .75; margin-bottom: 1rem; }
+  .offline { color: #1a7f37; font-weight: 600; }
+  button { font: inherit; padding: .4rem .8rem; margin-right: .5rem; }
+  pre { background: rgba(128,128,128,.12); padding: .75rem; border-radius: 4px;
+        max-height: 60vh; overflow: auto; white-space: pre-wrap; }
+</style>
+<h1>Planning Brain</h1>
+<div class="status" id="status">starting the backend&hellip;</div>
+<button id="ping">Ping</button>
+<button id="demo">Build demo dataset</button>
+<pre id="out">No output yet.</pre>
+<script type="module">
+  // Deliberately dependency-free. A build step and a framework for a shell that
+  // owns two buttons would be more to install, more to audit for network
+  // access, and more to bundle -- see docs/packaging.md.
+  const { invoke } = window.__TAURI__.core;
+  const { listen } = window.__TAURI__.event;
+  const out = document.getElementById("out");
+  const status = document.getElementById("status");
+  let nextId = 1;
+
+  listen("backend", (e) => {
+    for (const line of String(e.payload).split("\n")) {
+      if (!line.trim()) continue;
+      const msg = JSON.parse(line);
+      if (msg.ready) {
+        status.innerHTML = msg.offline
+          ? '<span class="offline">Offline &mdash; no data leaves this machine.</span>'
+          : "WARNING: the offline guard is not engaged.";
+        continue;
+      }
+      out.textContent = JSON.stringify(msg, null, 2);
+    }
+  });
+  listen("backend-error", (e) => { out.textContent = "backend stderr:\n" + e.payload; });
+  listen("backend-exit", (e) => { status.textContent = "backend exited: " + e.payload; });
+
+  const send = (method, params) =>
+    invoke("call_backend", { request: JSON.stringify({ id: nextId++, method, params }) });
+
+  document.getElementById("ping").onclick = () => send("ping");
+  document.getElementById("demo").onclick = () => send("demo.build", { seed: 7 });
+</script>

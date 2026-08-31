@@ -7,3 +7,10 @@ venv/
 .ruff_cache/
 *.sqlite3
 data/local/
+
+# packaging
+build/
+desktop/dist-build/
+desktop/node_modules/
+desktop/src-tauri/target/
+desktop/src-tauri/binaries/
