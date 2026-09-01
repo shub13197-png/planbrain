@@ -339,6 +339,7 @@ quietly excluding the hard ones is how a portfolio average gets improved.
 | [`docs/packaging.md`](docs/packaging.md) | Tauri shell, PyInstaller sidecar, and why IPC is stdio not localhost |
 | [`docs/install.md`](docs/install.md) | Installing, including the Gatekeeper and SmartScreen warnings you will see |
 | [`docs/mapping.md`](docs/mapping.md) | Column mapping: the Excel realities it handles, and why suggestions stay dumb |
+| [`docs/mapping-bakeoff.md`](docs/mapping-bakeoff.md) | Whether a 4B model earns 2.5 GB — thresholds committed first, baseline measured, bake-off blocked |
 | [`datasets/README.md`](datasets/README.md) | Public-data fetch scripts — outside the app boundary, and enforced to stay there |
 | [`docs/claim-audit.md`](docs/claim-audit.md) | Every claim re-run across five seeds, and the one it weakened |
 | [`docs/unit-costs.md`](docs/unit-costs.md) | How costs are derived, written before they were computed |
@@ -360,7 +361,7 @@ or without Docker:
 ```bash
 pip install -e ".[dev]"
 python -m tools.demo                       # the same end-to-end run
-pytest -q                                  # 604 tests
+pytest -q                                  # 625 tests
 python -m tools.check_fact_access          # the CI gate
 python -m tools.seed_demo                  # build the demo database
 python -m tools.service_report --sample 40 # the evidence above

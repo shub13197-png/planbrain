@@ -25,8 +25,8 @@ as the historical input — where the two disagree, this file wins.
 | **17** | **Desktop packaging: Tauri shell + PyInstaller sidecar** | **done** |
 | **18** | **M5 fetch, outside the app boundary** | **done** |
 | **19** | **Manual column-mapping UI** | **done** |
-| 20 | Column-mapping fixture corpus + accuracy threshold | next |
-| 21 | Mapping model bake-off, on top of the manual UI | after |
+| **20** | **Mapping corpus, thresholds, baseline** | **done** |
+| 21 | Mapping model bake-off | **blocked** — no llama-cpp-python for py3.14, no compiler |
 | — | CLSP, DRP, Timefold | deferred with reason; see the docs for each |
 
 ## Change: the service backtest was promoted to item 5

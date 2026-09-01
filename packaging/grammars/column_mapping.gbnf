@@ -1,0 +1,32 @@
+# GBNF constraining a mapping model's output to exactly one JSON object whose
+# values are a canonical field's source header, or the refusal token.
+#
+# The point of the grammar is not tidiness. It makes an invented field name
+# UNREPRESENTABLE: the model cannot emit `sku_code` because the grammar has no
+# production for it. That removes a whole class of failure rather than
+# detecting it afterwards.
+#
+# Refusal is a first-class production. A model that cannot say "ask the user"
+# will guess, and a confident wrong guess is worse than a blank dropdown --
+# nobody checks a field that already looks filled in.
+#
+# UNRUN. No llama-cpp-python in the authoring environment; see
+# docs/mapping-bakeoff.md.
+
+root        ::= "{" ws mapping ws "}"
+mapping     ::= pair (ws "," ws pair)*
+pair        ::= "\"" field "\"" ws ":" ws value
+
+field       ::= "sku_id" | "loc_id" | "bucket_date" | "qty"
+
+# Either a header copied verbatim from the input, or an explicit refusal.
+value       ::= header | refusal
+refusal     ::= "null"
+header      ::= "\"" char* "\""
+
+# Deliberately permissive on header content: real headings contain brackets,
+# Devanagari, slashes and non-breaking spaces. The scorer checks that whatever
+# came back is actually one of the offered headers -- a grammar cannot enforce
+# membership of a runtime list.
+char        ::= [^"\] | "\\" ["\/bfnrt]
+ws          ::= [ \t\n]*

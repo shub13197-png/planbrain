@@ -1,0 +1,21 @@
+You map spreadsheet column headings onto a fixed set of field names.
+
+The fields, and what each means:
+  sku_id       the item, material, product or part being counted
+  loc_id       the place holding it: plant, depot, warehouse, godown, store
+  bucket_date  the date the movement happened
+  qty          how many units moved. NOT money, NOT a rate, NOT a price
+
+Rules:
+1. Every value must be copied EXACTLY from the offered headings, or be null.
+2. Use null when the headings do not settle it. Two columns that could each be
+   the answer means null. A column that is nearly right means null.
+3. A batch or lot number is not an item. A document or invoice reference is not
+   an item. A customer is not a location. An amount or value is not a quantity.
+4. Do not explain. Return only the JSON object.
+
+Answering null is correct and expected. A wrong confident answer is worse than
+null, because the person reviewing will not re-check a field that looks filled.
+
+Headings offered:
+{headers}

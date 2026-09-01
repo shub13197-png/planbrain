@@ -91,6 +91,85 @@ worth running.
 
 Identical grammar, identical prompt, identical corpus for both.
 
+---
+
+# Outcome
+
+*Appended after running what could be run. Nothing above this line was changed.*
+
+## The baseline, measured
+
+`planbrain.mapping.suggest`, the existing normalised-equality matcher, on the
+full corpus:
+
+| | dev (24 cases) | **holdout (21 cases)** |
+|---|---|---|
+| accuracy | 74.0% (71/96) | **69.0% (58/84)** |
+| hit rate | 75.0% | 65.8% |
+| refusal correctness | 66.7% | 90.9% |
+| **false confidence** | 33.3% (4/12) | **9.1% (1/11)** |
+| latency p95 | 0.2 ms | 0.1 ms |
+
+**So the bar a model must clear is 79.0% accuracy on the holdout**, at no more
+than 15% false confidence.
+
+Two things worth saying about that baseline before any model is compared to it.
+
+**It is a harder target than it looks.** It already satisfies threshold 2 on the
+holdout — 9.1% false confidence — because it refuses whenever its alias table
+has no entry. A model must be *both* more accurate *and* no more reckless, and
+the second is where a fluent model naturally does worse.
+
+**Its failures are almost all misses, not errors.** On the holdout it picked a
+wrong column **zero** times and simply had no answer 25 times. That is the
+failure mode you want from a fallback: it declines rather than misleads. The
+27-point gap between its dev and holdout false confidence is small-sample noise
+on 11–12 refusal decisions, and is a reason to read those two figures loosely.
+
+## The bake-off did not run
+
+**`llama-cpp-python` cannot be installed in this environment**, so neither model
+was scored. This is a blocker, not a decision:
+
+| requirement | status here |
+|---|---|
+| `llama-cpp-python` wheel for Python 3.14 | **does not exist** |
+| MSVC compiler to build from source | not installed |
+| cmake | not installed |
+| ~5 GB for two Q4_K_M models | not attempted, blocked upstream |
+
+`pip download --only-binary=:all: llama-cpp-python` returns *No matching
+distribution found*.
+
+**What exists and is ready**, none of it executed:
+
+* `packaging/grammars/column_mapping.gbnf` — the GBNF, which makes an invented
+  field name *unrepresentable* rather than detected afterwards, and makes
+  refusal a first-class production
+* `packaging/grammars/column_mapping_prompt.txt` — the prompt, stating that
+  null is correct and expected
+* `tools/score_mapping.py::model_mapper` — the runner, CPU-only, non-thinking,
+  temperature 0
+
+To run it, on a machine with Python 3.11/3.12 and a compiler:
+
+```bash
+pip install llama-cpp-python
+python -m tools.score_mapping --mapper model --split holdout \
+    --model models/Qwen3-4B-Q4_K_M.gguf
+```
+
+**This is an unverified surface in the sense `docs/packaging.md` uses the word.**
+The grammar has never been parsed by llama.cpp; the prompt has never been sent
+to a model. Both are likely to need a pass of real work, and neither should be
+described as done.
+
+## Nothing has been decided
+
+The kill condition stands and is untested. **No model ships on the strength of
+an unrun bake-off**, and the manual mapping UI — which is built, tested and
+usable alone — remains the shipping path either way.
+
 ## Scope of the model, unchanged
 
 If one ships, it does **column mapping and importer error triage only**. Never
