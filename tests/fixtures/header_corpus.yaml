@@ -1,0 +1,351 @@
+# Column-mapping corpus. Hand-authored. Target table is `history` throughout.
+#
+# Each case is a set of column headings as they might appear in a real export,
+# with the mapping a competent human would produce. `null` means **no confident
+# mapping** — the correct answer is to leave the field blank and ask, not to
+# guess. Roughly a fifth of the corpus is like that on purpose, so a mapper can
+# be scored on appropriate refusal rather than only on hits.
+#
+# `split` is fixed here and never derived at runtime: a split recomputed from a
+# hash would silently move when the corpus grows, and the held-out half would
+# stop being held out.
+#
+#   dev      — may be looked at, tuned against, iterated on
+#   holdout  — untouched until the final run
+#
+# Sources are imitated from what these systems actually emit. No customer data.
+
+cases:
+
+  # ---------------------------------------------------------------- exact --
+  - id: exact-canonical
+    split: dev
+    source: our own template
+    headers: [sku_id, loc_id, bucket_date, qty]
+    expect: {sku_id: sku_id, loc_id: loc_id, bucket_date: bucket_date, qty: qty}
+
+  - id: plain-english
+    split: dev
+    source: a hand-kept spreadsheet
+    headers: [Item Code, Location, Date, Quantity]
+    expect: {sku_id: Item Code, loc_id: Location, bucket_date: Date, qty: Quantity}
+
+  - id: title-case-spaced
+    split: holdout
+    source: a hand-kept spreadsheet
+    headers: [Product Code, Warehouse, Transaction Date, Units Sold]
+    expect: {sku_id: Product Code, loc_id: Warehouse,
+             bucket_date: Transaction Date, qty: Units Sold}
+
+  # ------------------------------------------------------------- ERP-ish ---
+  - id: sap-mb51
+    split: dev
+    source: SAP MB51 material document list
+    headers: [Material, Plant, Posting Date, Quantity, Base Unit of Measure]
+    expect: {sku_id: Material, loc_id: Plant, bucket_date: Posting Date,
+             qty: Quantity}
+
+  - id: sap-mb51-storage-location
+    split: holdout
+    source: SAP MB51 with storage location instead of plant
+    headers: [Material, Storage Location, Posting Date, Qty in Un. of Entry]
+    expect: {sku_id: Material, loc_id: Storage Location,
+             bucket_date: Posting Date, qty: Qty in Un. of Entry}
+
+  - id: tally-stock-summary
+    split: dev
+    source: Tally stock summary
+    headers: [Item Name, Godown, Date, Inwards Qty, Outwards Qty]
+    # Two quantity columns with opposite signs. A human asks which one.
+    expect: {sku_id: Item Name, loc_id: Godown, bucket_date: Date, qty: null}
+    note: inwards and outwards are both quantities; the user must choose
+
+  - id: busy-sales-register
+    split: holdout
+    source: Busy accounting sales register
+    headers: [Item Code, Branch, Vch Date, Qty, Rate, Amount]
+    expect: {sku_id: Item Code, loc_id: Branch, bucket_date: Vch Date, qty: Qty}
+
+  - id: marg-stock-ledger
+    split: dev
+    source: Marg ERP stock ledger
+    headers: [Prod Code, Store, Bill Date, Sale Qty, MRP]
+    expect: {sku_id: Prod Code, loc_id: Store, bucket_date: Bill Date,
+             qty: Sale Qty}
+
+  - id: oracle-inventory
+    split: holdout
+    source: Oracle inventory transaction
+    headers: [Inventory Item, Organization Code, Transaction Date,
+              Transaction Quantity]
+    expect: {sku_id: Inventory Item, loc_id: Organization Code,
+             bucket_date: Transaction Date, qty: Transaction Quantity}
+
+  # ------------------------------------------------------- unit suffixes ---
+  - id: unit-suffix-parens
+    split: dev
+    source: a plant spreadsheet
+    headers: [Item Code, Godown, Date, Qty (Kgs)]
+    expect: {sku_id: Item Code, loc_id: Godown, bucket_date: Date,
+             qty: Qty (Kgs)}
+
+  - id: unit-suffix-underscore
+    split: dev
+    source: an exported CSV
+    headers: [ITEM_CD, LOC_CD, TXN_DT, QTY_KG]
+    expect: {sku_id: ITEM_CD, loc_id: LOC_CD, bucket_date: TXN_DT, qty: QTY_KG}
+
+  - id: unit-suffix-litres
+    split: holdout
+    source: a blending plant sheet
+    headers: [Material No, Tank Farm, Date, Volume (Ltrs)]
+    expect: {sku_id: Material No, loc_id: Tank Farm, bucket_date: Date,
+             qty: Volume (Ltrs)}
+
+  - id: unit-suffix-mt
+    split: holdout
+    source: a bulk despatch sheet
+    headers: [Item, Depot, Despatch Date, Quantity MT]
+    expect: {sku_id: Item, loc_id: Depot, bucket_date: Despatch Date,
+             qty: Quantity MT}
+
+  # ----------------------------------------------- merged two-row headers --
+  - id: merged-group-material
+    split: dev
+    source: a two-row header, group label merged above
+    headers: [Material Item Code, Material Description, Movement Godown,
+              Movement Posting Date, Qty (Kgs)]
+    expect: {sku_id: Material Item Code, loc_id: Movement Godown,
+             bucket_date: Movement Posting Date, qty: Qty (Kgs)}
+
+  - id: merged-group-details
+    split: holdout
+    source: a two-row header with a generic group label
+    headers: [Details Item Code, Details Warehouse, Details Date,
+              Figures Quantity, Figures Value]
+    expect: {sku_id: Details Item Code, loc_id: Details Warehouse,
+             bucket_date: Details Date, qty: Figures Quantity}
+
+  # ------------------------------------------------------- whitespace etc --
+  - id: trailing-whitespace
+    split: dev
+    source: a sheet edited by hand
+    headers: ["Item Code ", "Godown  ", " Date", "Quantity "]
+    expect: {sku_id: "Item Code ", loc_id: "Godown  ", bucket_date: " Date",
+             qty: "Quantity "}
+
+  - id: mixed-case-noise
+    split: holdout
+    source: a sheet edited by several people
+    headers: [iTEM cODE, godown, DATE, qty]
+    expect: {sku_id: iTEM cODE, loc_id: godown, bucket_date: DATE, qty: qty}
+
+  # ------------------------------------- abbreviations without vowels ------
+  - id: abbrev-no-vowels
+    split: dev
+    source: a legacy fixed-width export
+    headers: [MTRL_CD, WHSE, TRN_DT, QTY]
+    expect: {sku_id: MTRL_CD, loc_id: WHSE, bucket_date: TRN_DT, qty: QTY}
+
+  - id: abbrev-terse
+    split: dev
+    source: a mainframe extract
+    headers: [SKU, LOC, DT, QT]
+    expect: {sku_id: SKU, loc_id: LOC, bucket_date: DT, qty: QT}
+
+  - id: abbrev-numbered
+    split: holdout
+    source: a legacy system with positional names
+    headers: [ITM_NO, PLNT_CD, PSTG_DT, QNTY]
+    expect: {sku_id: ITM_NO, loc_id: PLNT_CD, bucket_date: PSTG_DT, qty: QNTY}
+
+  - id: abbrev-ambiguous-cd
+    split: holdout
+    source: a terse export where CD could be code or credit
+    headers: [CD, LOC, DT, AMT]
+    # AMT is an amount, not a quantity. CD alone is not enough to be sure.
+    expect: {sku_id: null, loc_id: LOC, bucket_date: DT, qty: null}
+    note: CD is unresolvable; AMT is money, not units
+
+  # ------------------------------------------- transliterated / Hinglish ---
+  - id: hinglish-maal
+    split: dev
+    source: a distributor sheet in transliterated Hindi
+    headers: [Maal Code, Godown, Dinank, Matra]
+    expect: {sku_id: Maal Code, loc_id: Godown, bucket_date: Dinank,
+             qty: Matra}
+    note: dinank = date, matra = quantity
+
+  - id: hinglish-mixed
+    split: dev
+    source: half English, half transliterated
+    headers: [Item Code, Godown Naam, Tarikh, Quantity]
+    expect: {sku_id: Item Code, loc_id: Godown Naam, bucket_date: Tarikh,
+             qty: Quantity}
+    note: tarikh = date
+
+  - id: hinglish-vastu
+    split: holdout
+    source: a transliterated sheet from a small distributor
+    headers: [Vastu Code, Bhandar, Dinank, Sankhya]
+    expect: {sku_id: Vastu Code, loc_id: Bhandar, bucket_date: Dinank,
+             qty: Sankhya}
+    note: vastu = item, bhandar = store, sankhya = count
+
+  - id: devanagari
+    split: holdout
+    source: a sheet with Devanagari headings
+    headers: ["वस्तु कोड", "गोदाम", "दिनांक", "मात्रा"]
+    expect: {sku_id: "वस्तु कोड", loc_id: "गोदाम", bucket_date: "दिनांक",
+             qty: "मात्रा"}
+
+  - id: devanagari-mixed
+    split: holdout
+    source: Devanagari headings with English codes
+    headers: ["Item Code", "गोदाम", "Date", "मात्रा (किग्रा)"]
+    expect: {sku_id: "Item Code", loc_id: "गोदाम", bucket_date: "Date",
+             qty: "मात्रा (किग्रा)"}
+
+  - id: tamil-mixed
+    split: dev
+    source: a southern distributor's sheet
+    headers: ["Item Code", "Kidangu", "Thethi", "Alavu"]
+    expect: {sku_id: "Item Code", loc_id: "Kidangu", bucket_date: "Thethi",
+             qty: "Alavu"}
+    note: kidangu = warehouse, thethi = date, alavu = quantity
+
+  # ------------------------------------------------------- distractors -----
+  - id: two-date-columns
+    split: dev
+    source: an export with document and posting dates
+    headers: [Material, Plant, Document Date, Posting Date, Quantity]
+    # Both are dates. Which one drives demand is a business question.
+    expect: {sku_id: Material, loc_id: Plant, bucket_date: null,
+             qty: Quantity}
+    note: document date and posting date differ; only the user knows which
+
+  - id: two-quantity-columns
+    split: holdout
+    source: an export with ordered and delivered quantities
+    headers: [Item Code, Depot, Date, Ordered Qty, Delivered Qty]
+    expect: {sku_id: Item Code, loc_id: Depot, bucket_date: Date, qty: null}
+    note: demand history could reasonably be either
+
+  - id: two-location-columns
+    split: dev
+    source: an export with both plant and depot
+    headers: [Material, Plant, Receiving Depot, Posting Date, Quantity]
+    expect: {sku_id: Material, loc_id: null, bucket_date: Posting Date,
+             qty: Quantity}
+    note: source or destination is a modelling choice, not a lookup
+
+  - id: qty-and-value
+    split: dev
+    source: a sales register carrying both units and money
+    headers: [Item Code, Branch, Date, Qty, Value]
+    expect: {sku_id: Item Code, loc_id: Branch, bucket_date: Date, qty: Qty}
+
+  - id: value-only
+    split: holdout
+    source: a finance extract with no unit quantity at all
+    headers: [Item Code, Branch, Date, Net Amount, Tax]
+    expect: {sku_id: Item Code, loc_id: Branch, bucket_date: Date, qty: null}
+    note: money is not units; there is nothing here to map to qty
+
+  # ------------------------------------------------- genuinely ambiguous ---
+  - id: opaque-generic
+    split: dev
+    source: an export whose headings say nothing
+    headers: [Code, Name, Date, Number]
+    expect: {sku_id: null, loc_id: null, bucket_date: Date, qty: null}
+    note: Code and Number could be almost anything
+
+  - id: positional
+    split: dev
+    source: a file exported without headers
+    headers: [Column1, Column2, Column3, Column4]
+    expect: {sku_id: null, loc_id: null, bucket_date: null, qty: null}
+
+  - id: opaque-numeric-suffixes
+    split: holdout
+    source: a system that numbers duplicate names
+    headers: [Field_1, Field_2, Field_3, Field_4, Field_5]
+    expect: {sku_id: null, loc_id: null, bucket_date: null, qty: null}
+
+  - id: reference-not-item
+    split: holdout
+    source: an export whose only code is a document reference
+    headers: [Doc Ref, Branch, Date, Qty]
+    expect: {sku_id: null, loc_id: Branch, bucket_date: Date, qty: Qty}
+    note: a document reference is not a material number
+
+  - id: batch-not-item
+    split: dev
+    source: a batch-level export
+    headers: [Batch No, Godown, Date, Qty]
+    expect: {sku_id: null, loc_id: Godown, bucket_date: Date, qty: Qty}
+    note: a batch number identifies a lot, not a SKU
+
+  - id: customer-not-location
+    split: holdout
+    source: a sales export keyed by customer
+    headers: [Item Code, Customer Name, Invoice Date, Qty]
+    expect: {sku_id: Item Code, loc_id: null, bucket_date: Invoice Date,
+             qty: Qty}
+    note: a customer is not a stocking location
+
+  # ------------------------------------------------------ wide / sparse ----
+  - id: very-wide
+    split: dev
+    source: a full ERP dump with thirty columns
+    headers: [Material, Material Description, Material Type, Plant,
+              Storage Location, Batch, Posting Date, Entry Date, Document Date,
+              Quantity, Base Unit of Measure, Amount in LC, Currency,
+              Movement Type, Movement Type Text, Vendor, Customer, Purchase Order,
+              Sales Order, Cost Center, Profit Center, Reference, User Name]
+    expect: {sku_id: Material, loc_id: Plant, bucket_date: null,
+             qty: Quantity}
+    note: three date columns again; entry, document and posting all present
+
+  - id: minimal-three
+    split: holdout
+    source: a stripped export missing a location entirely
+    headers: [Item Code, Date, Qty]
+    expect: {sku_id: Item Code, loc_id: null, bucket_date: Date, qty: Qty}
+    note: single-location businesses export like this
+
+  - id: leading-zero-context
+    split: dev
+    source: a sheet whose codes carry leading zeros
+    headers: [Material No (text), Godown, Posting Date, Qty]
+    expect: {sku_id: Material No (text), loc_id: Godown,
+             bucket_date: Posting Date, qty: Qty}
+
+  - id: sku-spelled-out
+    split: holdout
+    source: a retail export
+    headers: [Stock Keeping Unit, Store Number, Business Date, Units]
+    expect: {sku_id: Stock Keeping Unit, loc_id: Store Number,
+             bucket_date: Business Date, qty: Units}
+
+  - id: article-european
+    split: holdout
+    source: a European retailer's export
+    headers: [Artikelnummer, Filiale, Datum, Menge]
+    expect: {sku_id: Artikelnummer, loc_id: Filiale, bucket_date: Datum,
+             qty: Menge}
+    note: German; artikel = article, filiale = branch, menge = quantity
+
+  - id: part-number-engineering
+    split: dev
+    source: an engineering stores export
+    headers: [Part Number, Stores, Issue Date, Issued Qty]
+    expect: {sku_id: Part Number, loc_id: Stores, bucket_date: Issue Date,
+             qty: Issued Qty}
+
+  - id: period-not-date
+    split: dev
+    source: a monthly aggregate
+    headers: [Item Code, Depot, Period, Qty]
+    expect: {sku_id: Item Code, loc_id: Depot, bucket_date: Period, qty: Qty}
+    note: a period is a coarse date; the importer will reject unparseable ones
