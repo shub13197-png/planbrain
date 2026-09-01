@@ -42,6 +42,11 @@ jobs:
       - name: Size against the committed budget
         run: python packaging/check_size.py build/dist/planbrain-backend
 
+      - name: Bundle identity -- every entry allowlisted, nothing forbidden
+        # The budget caught nothing: 267 MB against a 400 MB budget, with
+        # 83 MB of pyarrow inside it. This gate is on identity, not weight.
+        run: python packaging/bundle_manifest.py build/dist/planbrain-backend
+
       - name: Package the artifact into a container with no network
         run: |
           printf 'FROM gcr.io/distroless/base-debian12\nCOPY dist /app\n' \
@@ -80,6 +85,7 @@ jobs:
       - run: pyinstaller packaging/backend.spec --noconfirm --distpath build/dist --workpath build/work
 
       - run: python packaging/check_size.py build/dist/planbrain-backend
+      - run: python packaging/bundle_manifest.py build/dist/planbrain-backend
 
       - name: The packaged sidecar reports the guard engaged
         shell: bash

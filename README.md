@@ -224,7 +224,7 @@ is verified rather than argued:
 
 | check | what it establishes | where |
 |---|---|---|
-| CI runs the pipeline and all 534 tests with `--network=none` | the pipeline needs nothing from the network — no interface exists, so a leak cannot succeed | `.github/workflows/ci.yml`, job `offline` |
+| CI runs the pipeline and all 547 tests with `--network=none` | the pipeline needs nothing from the network — no interface exists, so a leak cannot succeed | `.github/workflows/ci.yml`, job `offline` |
 | In-process socket block, tested **with** a network available | a stray call fails loudly on a customer's laptop rather than succeeding in silence | `tests/test_offline.py::test_the_whole_pipeline_runs_with_sockets_blocked` |
 | Dependency audit across all 29 runtime distributions | no telemetry, no version checks, no model downloads; the two conditional paths checked individually | [`docs/offline.md`](docs/offline.md) |
 
@@ -358,7 +358,7 @@ or without Docker:
 ```bash
 pip install -e ".[dev]"
 python -m tools.demo                       # the same end-to-end run
-pytest -q                                  # 534 tests
+pytest -q                                  # 547 tests
 python -m tools.check_fact_access          # the CI gate
 python -m tools.seed_demo                  # build the demo database
 python -m tools.service_report --sample 40 # the evidence above

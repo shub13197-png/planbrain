@@ -63,6 +63,61 @@ Exceeding either is a finding to report and diagnose, not a number to adjust.
 **These budgets exclude the LLM.** A 4B model at Q4_K_M adds roughly 2.5 GB and
 is measured separately, or the model's size would hide everything else moving.
 
+## The budget was the wrong gate, and the right one is on identity
+
+The budget passed. The first build was 267 MB against 400 MB, comfortably
+inside, and it contained **83 MB of `pyarrow`** — found only because someone read
+the breakdown. **Under budget is precisely when nobody looks.**
+
+Size was also the lesser problem. That 83 MB included `arrow_flight`, an RPC
+library for moving data *between machines*, inside an application whose central
+promise is that nothing leaves this one. **A size gate could not have raised
+that however tight the number**, because the objection is to what the thing *is*,
+not to how much it weighs.
+
+So `packaging/bundle_manifest.py` gates on **identity**. Every top-level entry
+needs an allowlist line saying what it is and why it ships; a new distribution
+fails the build until someone writes one; a `FORBIDDEN` list stops a transitive
+bump reinstating something already removed. Weight is reported alongside,
+because the breakdown is what makes a bad entry obvious once you are looking.
+
+**It earned its place on first run**, finding what the budget had not:
+
+| found | why it mattered |
+|---|---|
+| `libssl-3` (0.8 MB) | the OpenSSL **TLS transport layer**, in an app that promises no network |
+| `libcrypto-3` (5.2 MB) | kept — `_hashlib` links it for *hashing*, which is not transport. The distinction is the point |
+| `charset_normalizer`, `certifi`, `urllib3` | `requests`' dependencies, pulled by a hook, never imported |
+| `jinja2`, `markupsafe` | a template engine in a planning sidecar |
+| `psutil` | unused |
+
+Removing them took the bundle to **162 MB and startup from 5.4s to 2.4s**. The
+6 MB was incidental; a shipped TLS stack in a product whose main claim is
+offline operation was the finding.
+
+## Decision: CPU-only inference. Not revisited when the model lands.
+
+**Recorded now, before the model work starts, so it is not reopened then.**
+
+A runtime CUDA fetch is forbidden outright by the offline guarantee — that is
+what the reference implementation does and it is the one thing of its approach
+that cannot transfer. So the only two options are CPU-only, or shipping both
+variants in the installer.
+
+**CPU-only.** Shipping both doubles every artifact for a 4B model doing
+grammar-constrained column mapping — a task with tiny outputs, run once per
+import, on a machine chosen for spreadsheets rather than tensor cores. The
+GPU path would be dead weight on nearly every target machine and would blow the
+installer budget on all of them.
+
+`strip_gpu()` in the spec drops `cuda`, `cublas`, `cudnn` and `cudart`
+artefacts by filename, and `ggml-cuda` plus its cuBLAS runtime is roughly
+950 MB — enough to blow the committed budget in a single commit.
+
+**What would reopen this:** a measurement showing CPU inference too slow on
+target hardware for the mapping task. Not a preference, and not the availability
+of a GPU build.
+
 ## From the reference implementation
 
 `GGUFloader/gguf-loader` solves the `llama-cpp-python` bundling problem and two

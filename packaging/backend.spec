@@ -65,6 +65,16 @@ excludes = [
     # test_packaging asserts the pipeline still works without them.
     "fugue", "triad", "adagio", "pyarrow", "fsspec",
     "sklearn", "scipy.optimize._trlib", "scipy.sparse.csgraph",
+    # TLS. Found by the bundle manifest gate, not by the size budget, which is
+    # the point of having the gate: 6.2 MB of OpenSSL sitting inside an
+    # application whose central promise is that nothing leaves the machine. It
+    # is never imported at runtime -- the guard would block any socket using it
+    # anyway -- so shipping it is dead weight AND a confusing thing to find in
+    # the bundle of a product that claims to be offline.
+    "ssl", "_ssl", "urllib.request", "http.client",
+    # requests / template machinery, pulled by a hook rather than by us.
+    "charset_normalizer", "certifi", "idna", "urllib3", "requests",
+    "jinja2", "markupsafe", "psutil",
     "openpyxl.chart",     # we read cells, never charts
     "numpy.f2py", "scipy.io.matlab",
     "pandas.tests", "numpy.tests", "scipy.tests", "statsmodels.tests",
