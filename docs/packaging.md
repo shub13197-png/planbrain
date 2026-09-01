@@ -118,6 +118,25 @@ artefacts by filename, and `ggml-cuda` plus its cuBLAS runtime is roughly
 target hardware for the mapping task. Not a preference, and not the availability
 of a GPU build.
 
+## Unverified surfaces
+
+**Labelled unverified, not merely untested.** CI passing on these means the
+config parses and the steps run; it does not mean anyone has watched the thing
+work end to end. A reader should not mistake CI-green for verified.
+
+| surface | status | what would verify it |
+|---|---|---|
+| **The Tauri compile** | **unverified.** No Rust toolchain in the environment this was written in, so `Cargo.toml`, `main.rs` and `tauri.conf.json` have never been compiled. | One successful `installer` job, then launching the MSI and DMG and clicking both buttons. |
+| **The sidecar handshake through Tauri** | **unverified.** The stdio protocol is tested against the packaged binary directly; it has never been driven by the Rust shell. | The same run — the frontend showing "Offline" in its status bar is the proof. |
+
+Everything else in this document was built and run: the sidecar starts in 2.4s,
+answers requests with the guard engaged, and passes the size and identity gates
+on a real build.
+
+**These two are where the first real run will surface something.** That is the
+normal shape of a first packaging pass and it is written down so nobody has to
+rediscover which parts were checked.
+
 ## From the reference implementation
 
 `GGUFloader/gguf-loader` solves the `llama-cpp-python` bundling problem and two

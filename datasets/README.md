@@ -38,6 +38,17 @@ competition rules once on its page — the API cannot do that for you and return
 public dataset with no login. It is *never* a redistributed M5 extract, which
 would be a licensing problem rather than a convenience.
 
+## Unverified
+
+**The fetch path itself is unverified.** The no-credentials path, the
+verification logic and the boundary enforcement are all tested; the actual
+Kaggle download has never run here, because there are no credentials in this
+environment.
+
+So the first real run may surface a changed competition layout, a renamed file,
+or an API change. `EXPECTED` names files rather than globbing precisely so that
+fails loudly — but "fails loudly" is itself a prediction until someone runs it.
+
 ## What this is for
 
 M5 is real retail demand at scale: 30,490 series, five years, heavily
