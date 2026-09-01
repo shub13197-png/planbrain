@@ -16,7 +16,7 @@ having audited correctly, or on the audit staying true as versions move.
 
 ## Result
 
-**The full pipeline and all 547 tests run with no network interface.** Verified
+**The full pipeline and all 558 tests run with no network interface.** Verified
 by `docker run --network=none`, not by inspection.
 
 The in-process guard is verified separately **with a network available**, so
@@ -123,10 +123,21 @@ before the app is started, is a different thing from an app that calls out while
 running, and the distinction should be kept in the packaging: such a script
 belongs outside the app bundle, documented as a manual prerequisite.
 
-**There is currently no such script in this repository.** If one is added, it
-goes in a clearly separate location, is never invoked by application code, and
-is excluded from the offline test boundary by construction rather than by
-convention.
+**That location is `datasets/`**, and the separation is enforced rather than
+asserted — `tests/test_dataset_boundary.py` fails if anything under `planbrain/`
+or `tools/` imports or shells out to it, and the PyInstaller spec cannot reach
+it because the analysis starts at the backend entry point.
+
+`datasets/fetch_m5.py` is the first: a one-time Kaggle download of the M5
+competition data, run by a developer with their own credentials. It reaches the
+network deliberately, which is exactly why it lives outside the boundary rather
+than in `tools/`.
+
+**Why fetched rather than shipped:** M5's competition rules restrict
+redistribution, so a derived extract checked into this repository would be a
+licensing problem and not merely a size one. If the account requirement proves
+too much friction, the fallback is a genuinely public dataset — never a
+redistributed M5 extract.
 
 ## Constraint on future dependencies
 

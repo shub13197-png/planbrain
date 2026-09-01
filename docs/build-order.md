@@ -23,7 +23,7 @@ as the historical input — where the two disagree, this file wins.
 | 15 | `docs/method.md` and the synthetic-world limit | done — `3e6ed4b` |
 | 16 | Offline audit, socket guard, `--network=none` CI | done — `15d6987` |
 | **17** | **Desktop packaging: Tauri shell + PyInstaller sidecar** | **done** |
-| 18 | M5 fixture fetch (outside the app boundary) | next |
+| **18** | **M5 fetch, outside the app boundary** | **done** |
 | 19 | Column-mapping fixtures + threshold | after |
 | 20 | Mapping model bake-off, on top of the manual UI | after |
 | — | CLSP, DRP, Timefold | deferred with reason; see the docs for each |

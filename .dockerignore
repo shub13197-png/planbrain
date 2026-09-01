@@ -1,4 +1,6 @@
 .git
 data/local
+data/m5
+datasets
 **/__pycache__
 .pytest_cache
