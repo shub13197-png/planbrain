@@ -123,6 +123,19 @@ were present, would this check be looking at the place it would be?" Write the
 answer down next to the guard. Then sweep the others once, because if you got
 it wrong here you probably got it wrong somewhere else.
 
+**This practice was not foresight.** The same failure occurred four times before
+anyone generalised it — a residual that could not move, a suite that had never
+run where the product lives, a gate blind to half the bundle, and a register
+covering three documents of eleven. Each was diagnosed and fixed on its own
+terms, as a one-off, three times over.
+
+That is worth saying plainly because it is true of nearly everything on this
+page. **These practices are scar tissue, not design.** Each exists because
+something got through, and the interesting question when reading them is not
+whether they are wise but what they cost the project to learn. A method
+presented as though it were derived from principle would be a more impressive
+document and a less useful one.
+
 ## 4. Retract in place, and leave the retraction visible
 
 When a published claim turns out to be wrong, correct it **where it was
@@ -161,6 +174,29 @@ for more checking, not less.**
 
 **Cost:** re-running across seeds is slow. Do it for published claims, not for
 every intermediate.
+
+### The track record, which is stronger than the warning
+
+This project drew three published results from a 40-of-222 sample. **All three
+were wrong**, and it is worth stating that as a fact rather than as a risk:
+
+| result | on the 40-series sample | on all 222 | what happened |
+|---|---|---|---|
+| lumpy demand: this tool vs a tuned reorder point | 96.2% vs 95.3% — we win | 92.8% vs 93.7% — **they win** | **inverted** |
+| cost of the capacity cap | 0.6 points | 0.2 points | **a third of it** |
+| what staleness costs | 3.7 points | 2.3 points | **two thirds of it** |
+
+Three for three. One reversed the conclusion, two overstated the effect by a
+factor of two or three.
+
+A fourth of the same family, on a different axis: a fairness headroom of 0.0033
+came from a **single seed** and ran 0.00 to 0.03 across five. That one was used
+to justify *not building* an optimiser, which is the case deserving the most
+scrutiny and reliably gets the least.
+
+**So the honest statement is not "sampling is a risk."** It is: *on this project,
+every result measured on a subset and asserted for the whole has been wrong when
+re-run.* Sample to explore. Never to publish.
 
 ## 6. Keep the negative results in
 

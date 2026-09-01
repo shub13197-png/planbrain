@@ -98,6 +98,37 @@ around.
 A malformed profile is **reported, not skipped** — silently ignoring it means a
 hand-written profile never appears and the user has nothing to debug from.
 
+## The baseline is a strong incumbent, and the model may not beat it
+
+**Written before any model result exists**, so that the conclusion cannot be
+rationalised after seeing one.
+
+Measured on the 45-case corpus, the dumb normalised-equality matcher scores
+**69.0% accuracy on the holdout with 9.1% false confidence — and zero wrong
+columns.** On 84 decisions it never once pointed at the wrong column; it simply
+had no answer 25 times.
+
+That is a genuinely strong incumbent, and specifically strong in the dimension
+that matters. **Its failure mode is silence, not error.** A blank dropdown makes
+a user look; a confidently wrong one does not, because nobody re-checks a field
+that already appears filled in. The matcher already satisfies the
+false-confidence threshold the model must clear, so a model has to be *both*
+more accurate *and* no more reckless — and fluency pushes against the second.
+
+**So the model may well fail to clear the bar. If it does, that is the result,
+not a setback.**
+
+The honest outcome in that case is **a 160 MB application that maps columns
+conservatively and asks when unsure** — not a 2.6 GB one that guesses. For a
+user on a rural connection, which is the user this product exists for, 2.5 GB of
+weights is a real cost, and it has to buy something. Ten points of accuracy at
+no extra recklessness would buy it. A rounding error would not.
+
+Recording this now because the temptation after a disappointing bake-off is to
+find a reason the threshold was too strict. The threshold was set before the
+baseline was scored, and the baseline turning out strong is a reason to be
+pleased with the fallback, not a reason to move the bar.
+
 ## What is not built
 
 * **A file picker.** The path is typed. The Tauri dialog plugin is the obvious

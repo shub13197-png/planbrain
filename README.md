@@ -119,6 +119,20 @@ Fill rate / average on-hand, by demand pattern:
 **Intermittent demand is where this tool is ahead** — 97.3% fill against a tuned
 reorder point's 95.6%, bought with about 12% more stock.
 
+### Everything measured on a sample has been wrong
+
+Three published results were drawn from a 40-of-222 sample. **All three changed
+when re-run on the full portfolio** — one reversed outright:
+
+| result | on 40 series | on all 222 |
+|---|---|---|
+| lumpy demand vs a tuned reorder point | we win, 96.2 vs 95.3 | **they win, 92.8 vs 93.7** |
+| cost of the capacity cap | 0.6 points | 0.2 points |
+| what staleness costs | 3.7 points | 2.3 points |
+
+Every table on this page is now the whole portfolio. Sampling is for exploring;
+it is not for publishing.
+
 ### Every claim re-run across five seeds
 
 Sampling killed one claim, so the rest were audited the same way — full

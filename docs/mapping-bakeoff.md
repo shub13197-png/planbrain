@@ -164,6 +164,32 @@ The grammar has never been parsed by llama.cpp; the prompt has never been sent
 to a model. Both are likely to need a pass of real work, and neither should be
 described as done.
 
+## Environment required to run it
+
+**A prerequisite for a future session, not a task.** Nothing here can be worked
+around in this environment; it needs a different machine.
+
+| requirement | why |
+|---|---|
+| **Python 3.11 or 3.12** | `llama-cpp-python` publishes wheels for these. It has none for 3.14 |
+| **A C++ compiler** — MSVC Build Tools on Windows, clang or gcc elsewhere | needed if no wheel matches and it must build from source |
+| **cmake** | llama.cpp's build system |
+| **~5 GB free disk** | two Q4_K_M weights, roughly 2.5 GB each |
+| **Network, once** | to fetch the weights. This is outside the app boundary, exactly like `datasets/fetch_m5.py` — a developer downloading public files, not the application reaching out |
+
+```bash
+pip install llama-cpp-python
+# fetch Qwen3-4B-Q4_K_M.gguf and Phi-4-mini-Q4_K_M.gguf into models/
+python -m tools.score_mapping --mapper baseline --split holdout
+python -m tools.score_mapping --mapper model --split holdout \
+    --model models/Qwen3-4B-Q4_K_M.gguf
+python -m tools.score_mapping --mapper model --split holdout \
+    --model models/Phi-4-mini-Q4_K_M.gguf
+```
+
+Run the **dev** split first and iterate there. The holdout is for the final
+number, once.
+
 ## Nothing has been decided
 
 The kill condition stands and is untested. **No model ships on the strength of
