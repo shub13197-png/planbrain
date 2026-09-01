@@ -1,0 +1,17 @@
+# Tally sales register -> demand history.
+#
+# A shipped profile is an ordinary file. Copy it, change the right-hand side to
+# match your own column headings, and drop it beside your database -- nothing
+# here is special to us.
+#
+# Left side:  the field Planning Brain needs.
+# Right side: the heading as it appears in YOUR file, spelled exactly.
+name: Tally sales register
+table: history
+source_hint: tally
+header_row: 1
+columns:
+  sku_id: Item Code
+  loc_id: Godown
+  bucket_date: Date
+  qty: Quantity

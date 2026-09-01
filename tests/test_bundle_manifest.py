@@ -36,13 +36,13 @@ def test_a_forbidden_package_fails_the_gate(tmp_path):
 def test_an_unknown_package_fails_the_gate(tmp_path):
     """The general case. A new distribution needs a line saying why it ships."""
     _tree(tmp_path, {"somethingnew": 100})
-    _, unexpected, _, _ = audit(tmp_path)
+    _, unexpected, _, _, _ = audit(tmp_path)
     assert "somethingnew" in unexpected
 
 
 def test_a_clean_tree_passes(tmp_path):
     _tree(tmp_path, {"numpy": 10, "scipy": 10, "pandas": 10})
-    _, unexpected, forbidden, _ = audit(tmp_path)
+    _, unexpected, forbidden, _, _ = audit(tmp_path)
     assert unexpected == {}
     assert forbidden == {}
 
@@ -92,3 +92,43 @@ def test_allowlist_and_forbidden_do_not_overlap():
 
 def test_weighing_a_missing_tree_is_empty_not_an_error(tmp_path):
     assert weigh(tmp_path / "nope") == {}
+
+
+def test_pure_python_packages_are_checked_too(tmp_path):
+    """The hole that made half the gate decorative.
+
+    PyInstaller archives pure-Python packages inside the executable, where a
+    directory walk cannot see them. `requests` is pure Python, so it sat in
+    FORBIDDEN and could never have fired. The archive's TOC is read as well.
+    """
+    from bundle_manifest import archived_packages
+
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "PYZ-00.toc").write_text(repr([
+        ("os", "/usr/lib/python3.12/os.py", "PYMODULE"),
+        ("requests", "/x/site-packages/requests/__init__.py", "PYMODULE"),
+        ("requests.api", "/x/site-packages/requests/api.py", "PYMODULE"),
+        ("numpy", "/x/site-packages/numpy/__init__.py", "PYMODULE"),
+    ]), encoding="utf-8")
+
+    found = archived_packages(work)
+    assert "requests" in found, "a pure-Python client must be visible"
+    assert "numpy" in found
+    assert "os" not in found, "the stdlib is not something an allowlist enumerates"
+
+
+def test_an_archived_forbidden_package_fails_the_gate(tmp_path):
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "PYZ-00.toc").write_text(repr([
+        ("requests", "/x/site-packages/requests/__init__.py", "PYMODULE"),
+    ]), encoding="utf-8")
+    _tree(tmp_path, {"numpy": 10})
+    assert main([str(tmp_path), "--workpath", str(work)]) == 1
+
+
+def test_a_missing_archive_toc_is_reported_not_ignored(tmp_path):
+    """Half a gate that reports success is worse than no gate."""
+    _tree(tmp_path, {"numpy": 10})
+    assert main([str(tmp_path), "--workpath", str(tmp_path / "absent")]) == 1

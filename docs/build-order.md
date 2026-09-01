@@ -24,8 +24,9 @@ as the historical input — where the two disagree, this file wins.
 | 16 | Offline audit, socket guard, `--network=none` CI | done — `15d6987` |
 | **17** | **Desktop packaging: Tauri shell + PyInstaller sidecar** | **done** |
 | **18** | **M5 fetch, outside the app boundary** | **done** |
-| 19 | Column-mapping fixtures + threshold | after |
-| 20 | Mapping model bake-off, on top of the manual UI | after |
+| **19** | **Manual column-mapping UI** | **done** |
+| 20 | Column-mapping fixture corpus + accuracy threshold | next |
+| 21 | Mapping model bake-off, on top of the manual UI | after |
 | — | CLSP, DRP, Timefold | deferred with reason; see the docs for each |
 
 ## Change: the service backtest was promoted to item 5

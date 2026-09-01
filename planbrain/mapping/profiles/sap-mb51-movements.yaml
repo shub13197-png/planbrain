@@ -1,0 +1,13 @@
+# SAP MB51 material document list -> demand history.
+#
+# MB51 exports carry a title block above the headings, so header_row points at
+# the row where the column names actually are, counting from 1 as Excel shows.
+name: SAP MB51 movements
+table: history
+source_hint: sap
+header_row: 4
+columns:
+  sku_id: Material
+  loc_id: Plant
+  bucket_date: Posting Date
+  qty: Quantity

@@ -14,6 +14,15 @@ dependencies = [
     # the standing policy in docs/decisions.md. An AutoARIMA is not something to
     # reimplement in twenty lines; a Wagner-Whitin DP is.
     "statsforecast>=2.0",
+    # Reads the .xlsx files customers actually send. MIT. No network: it is a
+    # zip-and-XML reader, and the offline audit found nothing reachable in it.
+    "openpyxl>=3.1",
+    # Column-mapping profiles are YAML because a user must be able to hand-write
+    # one in a text editor -- a SAP or Tally profile is just a file we ship.
+    # MIT, no dependencies of its own. Loaded exclusively with safe_load:
+    # yaml.load executes arbitrary Python and a profile is the kind of file that
+    # gets emailed around.
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

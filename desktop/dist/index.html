@@ -2,49 +2,304 @@
 <meta charset="utf-8">
 <title>Planning Brain</title>
 <style>
-  :root { color-scheme: light dark; }
-  body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 1.5rem; }
-  h1 { font-size: 1.1rem; margin: 0 0 .25rem; }
-  .status { font-size: .85rem; opacity: .75; margin-bottom: 1rem; }
+  :root { color-scheme: light dark; --line: rgba(128,128,128,.28); }
+  * { box-sizing: border-box; }
+  body { font: 14px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+         margin: 0; padding: 1.25rem 1.5rem 3rem; }
+  h1 { font-size: 1.05rem; margin: 0; }
+  h2 { font-size: .82rem; text-transform: uppercase; letter-spacing: .06em;
+       opacity: .6; margin: 1.6rem 0 .5rem; font-weight: 600; }
+  .bar { display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap;
+         border-bottom: 1px solid var(--line); padding-bottom: .6rem; }
+  .status { font-size: .82rem; opacity: .8; }
   .offline { color: #1a7f37; font-weight: 600; }
-  button { font: inherit; padding: .4rem .8rem; margin-right: .5rem; }
-  pre { background: rgba(128,128,128,.12); padding: .75rem; border-radius: 4px;
-        max-height: 60vh; overflow: auto; white-space: pre-wrap; }
+  .warn { color: #9a6700; }
+  .bad { color: #b3261e; }
+  button { font: inherit; padding: .35rem .8rem; border-radius: 5px;
+           border: 1px solid var(--line); background: transparent; cursor: pointer; }
+  button:hover:not(:disabled) { background: rgba(128,128,128,.12); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { border-color: #1a7f37; color: #1a7f37; font-weight: 600; }
+  input, select { font: inherit; padding: .3rem .4rem; border-radius: 5px;
+                  border: 1px solid var(--line); background: transparent;
+                  color: inherit; max-width: 100%; }
+  input[type=text] { min-width: 26rem; }
+  table { border-collapse: collapse; font-size: .87rem; width: 100%; }
+  th, td { text-align: left; padding: .3rem .55rem; border-bottom: 1px solid var(--line);
+           white-space: nowrap; }
+  th { font-weight: 600; opacity: .75; }
+  .grid { display: grid; grid-template-columns: auto auto 1fr; gap: .4rem .9rem;
+          align-items: center; max-width: 62rem; }
+  .req::after { content: " *"; color: #b3261e; }
+  .note { font-size: .82rem; opacity: .75; margin: .35rem 0; }
+  .box { border: 1px solid var(--line); border-radius: 6px; padding: .7rem .9rem;
+         margin: .5rem 0; }
+  .scroll { overflow-x: auto; max-height: 22rem; overflow-y: auto; }
+  .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin: .5rem 0; }
+  code { font-size: .85em; background: rgba(128,128,128,.14); padding: .05rem .3rem;
+         border-radius: 3px; }
 </style>
-<h1>Planning Brain</h1>
-<div class="status" id="status">starting the backend&hellip;</div>
-<button id="ping">Ping</button>
-<button id="demo">Build demo dataset</button>
-<pre id="out">No output yet.</pre>
+
+<div class="bar">
+  <h1>Planning Brain</h1>
+  <span class="status" id="status">starting&hellip;</span>
+</div>
+
+<h2>1 &middot; Choose a file</h2>
+<div class="row">
+  <input type="text" id="path" placeholder="C:\path\to\your-spreadsheet.xlsx">
+  <select id="table"></select>
+  <button id="inspect">Inspect</button>
+</div>
+<div class="row" id="sheetRow" hidden>
+  <label>Sheet <select id="sheet"></select></label>
+  <label>Header row <input type="number" id="headerRow" min="1" style="width:5rem"></label>
+  <span class="note" id="detected"></span>
+</div>
+
+<h2>2 &middot; Map the columns</h2>
+<div class="note" id="profileRow">
+  <label>Profile
+    <select id="profile"><option value="">&mdash; none &mdash;</option></select>
+  </label>
+  <button id="applyProfile">Apply</button>
+</div>
+<div class="grid" id="mapping"><span class="note">Inspect a file first.</span></div>
+
+<h2>3 &middot; Check before writing</h2>
+<div class="row">
+  <button id="preview">Preview</button>
+  <button id="commit" class="primary" disabled>Import</button>
+  <span class="note" id="commitNote">Nothing is written until a preview passes.</span>
+</div>
+<div id="result"></div>
+
+<h2>4 &middot; Save this mapping</h2>
+<div class="row">
+  <input type="text" id="profileName" placeholder="e.g. Ludhiana depot monthly"
+         style="min-width:20rem">
+  <button id="saveProfile">Save profile</button>
+  <span class="note">Saved as YAML you can open and edit by hand.</span>
+</div>
+
 <script type="module">
-  // Deliberately dependency-free. A build step and a framework for a shell that
-  // owns two buttons would be more to install, more to audit for network
-  // access, and more to bundle -- see docs/packaging.md.
-  const { invoke } = window.__TAURI__.core;
-  const { listen } = window.__TAURI__.event;
-  const out = document.getElementById("out");
-  const status = document.getElementById("status");
-  let nextId = 1;
+// Dependency-free on purpose. A framework for a form with four sections would
+// be more to install, more to audit for network access, and more to bundle --
+// in an app whose central claim is that nothing leaves the machine.
+const { invoke } = window.__TAURI__.core;
+const { listen } = window.__TAURI__.event;
 
-  listen("backend", (e) => {
-    for (const line of String(e.payload).split("\n")) {
-      if (!line.trim()) continue;
-      const msg = JSON.parse(line);
-      if (msg.ready) {
-        status.innerHTML = msg.offline
-          ? '<span class="offline">Offline &mdash; no data leaves this machine.</span>'
-          : "WARNING: the offline guard is not engaged.";
-        continue;
-      }
-      out.textContent = JSON.stringify(msg, null, 2);
-    }
+const $ = (id) => document.getElementById(id);
+const pending = new Map();
+let nextId = 1;
+
+function call(method, params) {
+  return new Promise((resolve, reject) => {
+    const id = nextId++;
+    pending.set(id, { resolve, reject });
+    invoke("call_backend", { request: JSON.stringify({ id, method, params }) });
   });
-  listen("backend-error", (e) => { out.textContent = "backend stderr:\n" + e.payload; });
-  listen("backend-exit", (e) => { status.textContent = "backend exited: " + e.payload; });
+}
 
-  const send = (method, params) =>
-    invoke("call_backend", { request: JSON.stringify({ id: nextId++, method, params }) });
+listen("backend", (e) => {
+  for (const line of String(e.payload).split("\n")) {
+    if (!line.trim()) continue;
+    let msg; try { msg = JSON.parse(line); } catch { continue; }
+    if (msg.ready) {
+      $("status").innerHTML = msg.offline
+        ? '<span class="offline">Offline &mdash; nothing leaves this machine.</span>'
+        : '<span class="bad">The offline guard is NOT engaged. Please report this.</span>';
+      loadProfiles();
+      continue;
+    }
+    const waiter = pending.get(msg.id);
+    if (!waiter) continue;
+    pending.delete(msg.id);
+    msg.ok ? waiter.resolve(msg.result) : waiter.reject(msg.error);
+  }
+});
+listen("backend-error", (e) => { $("status").innerHTML =
+  '<span class="bad">backend error: ' + e.payload + '</span>'; });
 
-  document.getElementById("ping").onclick = () => send("ping");
-  document.getElementById("demo").onclick = () => send("demo.build", { seed: 7 });
+// --- state -----------------------------------------------------------------
+let shape = null;                 // last mapping.inspect result
+let mapping = {};                 // canonical -> source header
+
+for (const t of ["history", "parts", "bom", "routings", "fleet"]) {
+  $("table").add(new Option(t, t));
+}
+
+async function loadProfiles() {
+  try {
+    const { profiles } = await call("profile.list", {});
+    const sel = $("profile");
+    sel.length = 1;
+    for (const p of profiles) {
+      sel.add(new Option(`${p.name} (${p.table})`, JSON.stringify(p)));
+    }
+  } catch { /* profiles are optional; the manual path must work without them */ }
+}
+
+// --- 1. inspect ------------------------------------------------------------
+$("inspect").onclick = async () => {
+  const path = $("path").value.trim();
+  if (!path) return;
+  try {
+    shape = await call("mapping.inspect",
+      { path, table: $("table").value, sheet: $("sheet").value || null });
+  } catch (err) { return showError(err); }
+
+  const sel = $("sheet");
+  sel.length = 0;
+  for (const s of shape.sheets) sel.add(new Option(s, s));
+  if (shape.sheet) sel.value = shape.sheet;
+  $("headerRow").value = shape.header_row;
+  $("sheetRow").hidden = false;
+
+  const skipped = shape.skipped_rows.length
+    ? ` Skipped ${shape.skipped_rows.length} title row(s) above.` : "";
+  const low = shape.confidence < 0.6;
+  $("detected").innerHTML =
+    `<span class="${low ? "warn" : ""}">Header found on row ${shape.header_row}` +
+    ` (confidence ${shape.confidence}).${skipped}</span><br>` +
+    shape.reasons.map(r => "&mdash; " + escape_(r)).join("<br>") +
+    (low ? "<br><b>Low confidence &mdash; check this before importing.</b>" : "");
+
+  mapping = { ...shape.suggested };
+  renderMapping();
+  $("commit").disabled = true;
+  $("result").innerHTML = "";
+};
+
+$("sheet").onchange = () => $("inspect").click();
+
+function renderMapping() {
+  const box = $("mapping");
+  box.innerHTML = "";
+  if (!shape) return;
+  for (const field of shape.canonical) {
+    const required = shape.required.includes(field);
+    const label = document.createElement("label");
+    label.textContent = field;
+    label.className = required ? "req" : "";
+    const select = document.createElement("select");
+    select.add(new Option("— not mapped —", ""));
+    for (const col of shape.columns) {
+      if (col) select.add(new Option(col, col));
+    }
+    select.value = mapping[field] || "";
+    select.onchange = () => {
+      if (select.value) mapping[field] = select.value; else delete mapping[field];
+      $("commit").disabled = true;   // any edit invalidates the last preview
+      $("commitNote").textContent = "Mapping changed — preview again before importing.";
+    };
+    const hint = document.createElement("span");
+    hint.className = "note";
+    hint.textContent = mapping[field] ? "suggested" : (required ? "required" : "optional");
+    box.append(label, select, hint);
+  }
+}
+
+$("applyProfile").onclick = () => {
+  const raw = $("profile").value;
+  if (!raw || !shape) return;
+  const p = JSON.parse(raw);
+  mapping = { ...p.columns };
+  if (p.header_row) $("headerRow").value = p.header_row;
+  renderMapping();
+  $("commit").disabled = true;
+};
+
+// --- 3. preview and commit -------------------------------------------------
+function params() {
+  return {
+    path: $("path").value.trim(),
+    table: $("table").value,
+    columns: mapping,
+    sheet: $("sheet").value || null,
+    header_row: Number($("headerRow").value) || null,
+  };
+}
+
+$("preview").onclick = async () => {
+  let r;
+  try { r = await call("mapping.preview", params()); }
+  catch (err) { return showError(err); }
+
+  let html = "";
+  if (r.missing_required.length) {
+    html += `<div class="box bad"><b>Not ready:</b> required field(s) not
+      mapped &mdash; ${r.missing_required.map(escape_).join(", ")}</div>`;
+  }
+  for (const w of r.warnings) {
+    html += `<div class="box warn"><b>${escape_(w.field)}</b>
+      &larr; ${escape_(w.column)}: <code>${escape_(w.example)}</code><br>
+      ${escape_(w.message)}</div>`;
+  }
+  if (r.problems.length) {
+    html += `<div class="box"><b class="bad">${r.problems.length} problem(s)</b>
+      ${r.suppressed ? ` (and ${r.suppressed} more not shown)` : ""}
+      <div class="scroll"><table><tr><th>Row</th><th>Column</th>
+      <th>Value</th><th>Problem</th></tr>` +
+      r.problems.slice(0, 60).map(p => `<tr><td>${p.row}</td>
+        <td>${escape_(p.column)}</td><td>${escape_(p.value)}</td>
+        <td>${escape_(p.message)}</td></tr>`).join("") +
+      `</table></div></div>`;
+  }
+  if (r.preview.length) {
+    const cols = Object.keys(r.preview[0]);
+    html += `<div class="note">${r.total_rows.toLocaleString()} row(s) parsed.
+      First ${r.preview.length} shown &mdash; check these before importing.</div>
+      <div class="scroll"><table><tr>` +
+      cols.map(c => `<th>${escape_(c)}</th>`).join("") + "</tr>" +
+      r.preview.map(row => "<tr>" +
+        cols.map(c => `<td>${escape_(String(row[c]))}</td>`).join("") +
+        "</tr>").join("") + "</table></div>";
+  }
+  if (r.unmapped_sources.length) {
+    html += `<div class="note">Not imported (no field mapped):
+      ${r.unmapped_sources.map(escape_).join(", ")}</div>`;
+  }
+  $("result").innerHTML = html || '<div class="note">Nothing to show.</div>';
+  $("commit").disabled = !r.ok;
+  $("commitNote").textContent = r.ok
+    ? "Preview passed. Importing writes all rows or none."
+    : "Fix the problems above; nothing can be written until the whole file validates.";
+};
+
+$("commit").onclick = async () => {
+  try {
+    const r = await call("mapping.commit", params());
+    $("result").innerHTML = `<div class="box"><b class="offline">Imported.</b>
+      ${r.written.toLocaleString()} row(s) written from
+      ${r.rows.toLocaleString()} parsed.</div>` + $("result").innerHTML;
+    $("commit").disabled = true;
+  } catch (err) { showError(err); }
+};
+
+// --- 4. profiles -----------------------------------------------------------
+$("saveProfile").onclick = async () => {
+  const name = $("profileName").value.trim();
+  if (!name || !shape) return;
+  try {
+    const r = await call("profile.save", {
+      directory: "profiles", name, table: $("table").value,
+      columns: mapping, sheet: $("sheet").value || null,
+      header_row: Number($("headerRow").value) || null,
+    });
+    $("result").innerHTML =
+      `<div class="box">Saved <code>${escape_(r.path)}</code>. It is plain YAML —
+       open it in any editor.</div>` + $("result").innerHTML;
+    loadProfiles();
+  } catch (err) { showError(err); }
+};
+
+function showError(err) {
+  $("result").innerHTML = `<div class="box bad"><b>${escape_(err.type || "Error")}</b>
+    <br>${escape_(err.message || String(err))}</div>`;
+}
+function escape_(s) {
+  return String(s).replace(/[&<>"]/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
 </script>

@@ -95,6 +95,26 @@ Removing them took the bundle to **162 MB and startup from 5.4s to 2.4s**. The
 6 MB was incidental; a shipped TLS stack in a product whose main claim is
 offline operation was the finding.
 
+### The gate had a hole, and closing it found more
+
+The first version walked the filesystem tree only. PyInstaller archives
+**pure-Python** packages inside the executable, where a directory walk cannot
+see them — so `requests`, which is pure Python, sat in `FORBIDDEN` and **could
+never have fired**. Half the gate was decorative.
+
+It now also reads the build's `PYZ-*.toc`, counting only third-party modules;
+enumerating the standard library would be hundreds of entries nobody reads.
+Closing it immediately surfaced a **BeautifulSoup HTML-scraping stack** —
+`bs4`, `html5lib`, `soupsieve`, `webencodings`, arriving through
+`pandas.read_html` — plus IPython's `pygments` and `traitlets`. None imported at
+runtime, all invisible to the previous gate.
+
+Two further bugs surfaced while testing the fix, both the same shape as what the
+gate exists to catch: the TOC search recursed from a parent directory and found
+an **unrelated build's** table of contents, and an empty tree read as populated
+because archived entries were merged in before the emptiness check. Both fixed,
+both now tested.
+
 ## Decision: CPU-only inference. Not revisited when the model lands.
 
 **Recorded now, before the model work starts, so it is not reopened then.**

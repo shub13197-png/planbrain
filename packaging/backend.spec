@@ -30,6 +30,9 @@ ROOT = Path(SPECPATH).parent
 # model is actually fitted, which is well after import.
 hiddenimports = [
     "planbrain.backend.api",
+    "planbrain.mapping",
+    "openpyxl",
+    "yaml",
     *collect_submodules("statsforecast"),
     *collect_submodules("utilsforecast"),
     "scipy.stats",
@@ -48,6 +51,9 @@ datas = [
      "planbrain/contracts"),
     # Draft metaschemas, shipped as package data rather than code.
     *collect_data_files("jsonschema_specifications"),
+    # Shipped mapping profiles are data files read at runtime, so the analyser
+    # cannot see them from the source.
+    (str(ROOT / "planbrain" / "mapping" / "profiles"), "planbrain/mapping/profiles"),
 ]
 
 # Nothing here is used at runtime. Dropped by name because a hook that happens
@@ -72,10 +78,21 @@ excludes = [
     # anyway -- so shipping it is dead weight AND a confusing thing to find in
     # the bundle of a product that claims to be offline.
     "ssl", "_ssl", "urllib.request", "http.client",
+    # BeautifulSoup and friends arrive through pandas.read_html -- an HTML
+    # scraping stack in a planning sidecar. Pure Python, so they were invisible
+    # to the gate until it learned to read the PYZ archive.
+    "bs4", "html5lib", "soupsieve", "webencodings", "lxml",
+    # IPython display machinery, pulled by pandas' rich repr. Nothing here has
+    # a notebook to render into.
+    "IPython", "pygments", "traitlets",
     # requests / template machinery, pulled by a hook rather than by us.
     "charset_normalizer", "certifi", "idna", "urllib3", "requests",
     "jinja2", "markupsafe", "psutil",
-    "openpyxl.chart",     # we read cells, never charts
+    # NOT "openpyxl.chart": excluding a submodule breaks the parent package,
+    # because openpyxl imports chart from its own workbook module. That
+    # exclusion shipped from item 12 until the bundle identity gate flagged
+    # openpyxl as allowlisted-but-absent, and the packaged app failed on the
+    # first .xlsx anyone opened -- the mapping UI's primary use case.
     "numpy.f2py", "scipy.io.matlab",
     "pandas.tests", "numpy.tests", "scipy.tests", "statsmodels.tests",
 ]
