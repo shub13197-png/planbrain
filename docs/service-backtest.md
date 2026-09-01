@@ -10,6 +10,11 @@ machinery for producing the table below.
 > 450 resource-buckets**, at 85% overall utilisation, with individual buckets
 > well below the capacity their load requires.
 >
+> **These figures are the full 222-series portfolio.** An earlier version of
+> this page quoted a 40-series sample and went stale when the demo generator
+> changed — it disagreed with the README for weeks, because the
+> published-figure register did not cover this file. It does now.
+>
 > A capacity-capped sensitivity is reported at the bottom of this page. The
 > honest headline is a **range**, not the single number in the table below.
 >
@@ -39,21 +44,27 @@ question is restated as the one a finance manager actually asks:
 Re-run at item 7 after **demand drift** was added to the generator. The earlier
 numbers, on a stationary history, are kept below for comparison.
 
+**All 222 series, 205 scored**, 90-day holdout, 7 days safety stock:
+
 | policy | fill rate | avg on-hand | units short |
 |---|---|---|---|
-| fitted forecast | **97.9%** | 1,346 | 6,674 |
-| naive zero forecast | 77.8% | 269 | 40,067 |
-| reorder point, **tuned** | 95.2% | 793 | 25,228 |
-| reorder point, **stale** | 91.9% | 786 | 36,975 |
+| fitted forecast | **97.2%** | 1,301 | 26,034 |
+| reorder point, **tuned** | 95.7% | 880 | 109,154 |
+| reorder point, **stale** | 93.4% | 870 | 192,687 |
+| naive zero forecast | 76.1% | 272 | 237,101 |
 
 By demand pattern, fill rate / average on-hand:
 
-| policy | erratic | intermittent | lumpy | smooth |
+| policy | erratic | **intermittent** | lumpy | smooth |
 |---|---|---|---|---|
-| fitted forecast | 98.8% / 1,297 | 95.8% / 731 | **97.1% / 1,021** | 99.2% / 1,910 |
-| naive zero | 83.3% / 151 | 66.0% / 90 | **58.0% / 106** | 95.9% / 509 |
-| reorder point, tuned | 96.9% / 671 | 93.9% / 621 | 94.0% / 1,040 | 96.3% / 725 |
-| reorder point, stale | 97.9% / 867 | 87.3% / 583 | 86.0% / 898 | 96.7% / 783 |
+| fitted forecast | 98.2% / 1,236 | **97.3% / 948** | 92.8% / 898 | 99.6% / 1,986 |
+| reorder point, tuned | 95.9% / 796 | 95.6% / 849 | **93.7% / 939** | 96.9% / 915 |
+| reorder point, stale | 95.4% / 834 | 91.1% / 828 | 89.3% / 846 | 97.1% / 952 |
+| naive zero | 89.7% / 274 | **63.0% / 144** | **55.1% / 79** | 94.1% / 541 |
+
+**On lumpy demand a tuned reorder point beats this tool** — 93.7% against 92.8%.
+That is the retraction recorded in the README: the opposite claim came from a
+40-series sample and did not survive the full run.
 
 ### Two reorder-point rows, on purpose
 
@@ -202,23 +213,24 @@ and the ten worst at **0.21, 0.34, 0.36, 0.38, 0.38, 0.41, 0.42, 0.46, 0.47,
 
 ## The range
 
-| | fill rate | avg on-hand |
+Full portfolio, 205 scored:
+
+| policy | unconstrained | capacity-capped |
 |---|---|---|
-| unconstrained (headline table above) | **97.9%** | 1,245 |
-| capacity-capped | **97.3%** | 1,214 |
+| fitted forecast | 97.2% / 1,301 | **97.0% / 1,272** |
+| reorder point, tuned | 95.7% / 880 | 95.0% / 838 |
+| reorder point, stale | 93.4% / 870 | 92.9% / 827 |
+| naive zero | 76.1% / 272 | 75.6% / 247 |
 
-By demand pattern, fill rate / average on-hand:
+**The cap costs about 0.2 points across the portfolio** — smaller than the
+0.6 an earlier 40-series sample suggested. That gap is itself a sampling
+artefact of the kind that killed the lumpy claim, and it is the reason this page
+now reports the whole portfolio.
 
-| pattern | unconstrained | capacity-capped | change |
-|---|---|---|---|
-| smooth | 99.8% / 1,861 | 99.7% / 1,845 | −0.1 |
-| erratic | 97.1% / 1,759 | **98.4%** / 1,697 | **+1.3** |
-| intermittent | 97.4% / 769 | 96.8% / 730 | −0.6 |
-| **lumpy** | 96.2% / 752 | **94.3%** / 722 | **−1.9** |
-
-**Lumpy demand takes the damage**, which is consistent with everything else in
-this repo: it is the class with the least slack and the least room to recover
-from a missed delivery.
+The constraint is concentrated rather than spread: the delivery factor averages
+0.916, with **70 of 90 buckets entirely unconstrained** and the worst at 0.21.
+A shortfall in a fifth of buckets moves a portfolio average very little and can
+still be severe for the SKUs in those buckets.
 
 ## Three limitations, because a crude number presented cleanly is worse than none
 

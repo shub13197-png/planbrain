@@ -66,6 +66,17 @@ FIGURES = (
     Figure("naive_intermittent", 0.630, "63.0%", (README,), tolerance=0.002),
     Figure("naive_lumpy", 0.551, "55.1%", (README,), tolerance=0.002),
 
+    # --- the proof-of-value report, which was NOT covered until the guard
+    # --- sweep found it disagreeing with the README for weeks -------------
+    Figure("sb_fitted", 0.972, "**97.2%**", (SERVICE,), tolerance=0.002),
+    Figure("sb_tuned", 0.957, "95.7%", (SERVICE,), tolerance=0.002),
+    Figure("sb_stale", 0.934, "93.4%", (SERVICE,), tolerance=0.002),
+    Figure("sb_naive", 0.761, "76.1%", (SERVICE,), tolerance=0.002),
+    Figure("sb_lumpy_fitted", 0.928, "92.8%", (SERVICE,), tolerance=0.002),
+    Figure("sb_lumpy_tuned", 0.937, "93.7%", (SERVICE,), tolerance=0.002),
+    Figure("sb_capped_fitted", 0.970, "**97.0% / 1,272**", (SERVICE,),
+           tolerance=0.002),
+
     # --- capacity -------------------------------------------------------
     Figure("rccp_utilisation", 0.85, "85% overall utilisation", (README,),
            tolerance=0.01),

@@ -93,6 +93,36 @@ arithmetic is arithmetic.
 **Cost:** you will sometimes discover your best-looking evidence is empty. That
 is the practice working.
 
+## 3b. State where the thing you are guarding actually lives
+
+For every guard, write down **where the thing it guards lives**, then confirm
+the guard looks there. A guard that runs somewhere the subject does not exist
+cannot fire, and it will be reported as coverage.
+
+This is a distinct failure from a check that *can* fire but is weak. These pass
+cleanly, forever, and their passing is evidence of nothing.
+
+**Four instances on this project, all the same shape:**
+
+* A reconciliation summed four terms and reported a residual of −0.0. The terms
+  were differences between adjacent rungs, so they summed to the gap by algebra.
+  The check lived in a place where no error could exist.
+* A test suite passed on every commit and had **never run in the packaged
+  build**. It verified a checkout; the thing shipped was an executable, and the
+  first time it ran there it could not even import its own helper module.
+* A bundle gate held `requests` on a forbidden list and walked only the
+  filesystem. PyInstaller archives pure-Python packages *inside the executable*,
+  so `requests` was in the one place the gate could not see. Half of it was
+  decorative.
+* A register pinned every published figure — in three of eleven documents. The
+  proof-of-value report was not among them, and had been contradicting the
+  README for weeks.
+
+**The question to ask** is not "does this check pass?" but "if the thing I fear
+were present, would this check be looking at the place it would be?" Write the
+answer down next to the guard. Then sweep the others once, because if you got
+it wrong here you probably got it wrong somewhere else.
+
 ## 4. Retract in place, and leave the retraction visible
 
 When a published claim turns out to be wrong, correct it **where it was
@@ -239,6 +269,26 @@ evidence against a fluke and is **not** evidence about anyone else's data.
 plainly builds confidence; finding it themselves destroys it.
 
 ---
+
+## The guard sweep
+
+Every guard in this repository, and where the thing it guards actually lives:
+
+| guard | what it guards | does it look where that lives? |
+|---|---|---|
+| `offline.engage()` | outbound connections | **Yes, partially.** Covers all pure-Python clients; native code and subprocesses are named as uncovered and are why the container check exists too |
+| `--network=none` on the packaged artifact | the shipped binary calling out | **Yes.** Runs the actual artifact, after this failed once by running a checkout instead |
+| `check_fact_access.py` | direct fact-table SQL | **Yes.** Scans every `.py` in the tree; a search for fact-table names in `.js`, `.html`, `.yaml` and `.sql` found only the DDL itself |
+| `bundle_manifest.py` | unexpected dependencies | **Yes, now.** Filesystem *and* the PYZ archive. It looked at only the filesystem until this sweep's predecessor |
+| `test_dataset_boundary` | app code reaching `datasets/` | **Yes.** Checks imports *and* subprocess calls in `planbrain/` and `tools/`, and asserts the spec cannot reach it |
+| `test_encoding` | non-UTF-8 files | **Yes.** Walks every text suffix in the repo |
+| `test_no_silent_defaults` | masking defaults | **Partially.** Covers the sites found in one sweep; it is a snapshot, not a rule that catches new ones |
+| **published-figure pins** | figures in prose | **No — this sweep found it.** Three of eleven documents |
+
+The last row was live: `docs/service-backtest.md`, the proof-of-value report,
+carried pre-resize numbers from a 40-series sample while the README carried
+corrected full-portfolio ones. Two documents in one repository answering the
+same question differently, for weeks, with a green build.
 
 ## What this method costs
 
