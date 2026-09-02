@@ -14,9 +14,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from planbrain import netreq, rccp  # noqa: E402
+from planbrain import forecast, netreq, rccp  # noqa: E402
 from planbrain.demo import build_demo, populate  # noqa: E402
 from planbrain.facts.access import read_facts  # noqa: E402
+from planbrain.facts.scenario import set_growth  # noqa: E402
 
 SCHEMA = Path(__file__).resolve().parents[1] / "planbrain" / "facts" / "schema.sql"
 
@@ -29,7 +30,23 @@ def main(argv=None) -> int:
     parser.add_argument("--lot-sizing", default="as_master",
                         choices=["as_master", "cost_based"],
                         help="cost_based prices changeover into the lot size")
+    parser.add_argument("--demand-growth", type=float, default=0.0, metavar="PCT",
+                        help="annual %% growth in demand, compounded daily from "
+                             "the last actual. Needs --source forecast")
+    parser.add_argument("--capacity-growth", type=float, default=0.0, metavar="PCT",
+                        help="annual %% growth in available hours: a shift or a "
+                             "machine phasing in")
     args = parser.parse_args(argv)
+
+    if args.demand_growth and args.source != "forecast":
+        # Refused rather than ignored. A growth rate that silently does nothing
+        # is worse than one that is rejected: the run succeeds, the numbers look
+        # considered, and nobody finds out the assumption never applied.
+        parser.error(
+            "--demand-growth only affects a forecast-sourced plan; the naive "
+            "replay reads actuals, which no assumption about the future can "
+            "change. Add --source forecast, or use --capacity-growth."
+        )
 
     con = sqlite3.connect(":memory:")
     con.execute("PRAGMA foreign_keys = ON")
@@ -37,6 +54,11 @@ def main(argv=None) -> int:
 
     demo = build_demo(seed=args.seed)
     populate(con, demo)
+    set_growth(con, scenario_id=0,
+               demand_growth_pct=args.demand_growth,
+               capacity_growth_pct=args.capacity_growth)
+    if args.source == "forecast":
+        forecast.run(con, demo)
     netreq.run(con, demo, source=args.source, lot_sizing=args.lot_sizing)
     report = rccp.run(con, demo)
 
@@ -51,6 +73,12 @@ def _print(report, demo, con) -> None:
     total_cap = sum(d["capacity_hours"] for d in report["resources"].values())
     overall = f"{total_load / total_cap * 100:.0f}%" if total_cap else "-"
     print(f"Rough-cut capacity - {report['buckets']} buckets - plan is {verdict}")
+    if report["capacity_growth_pct"] or report["demand_growth_pct"]:
+        # Printed with the verdict, not in a footer. A feasibility answer read
+        # without its assumptions is the one most likely to be quoted onwards.
+        print(f"assumptions: demand {report['demand_growth_pct']:+.1f}%/yr, "
+              f"capacity {report['capacity_growth_pct']:+.1f}%/yr, "
+              f"compounded from {report['growth_anchor']}")
     print(f"overall load {total_load:,.0f} h against {total_cap:,.0f} h available "
           f"({overall})")
     print()

@@ -1304,3 +1304,57 @@ mismatch, the flat-layout install, and this. The common cause is not
 carelessness in any of the three; it is that this environment has no Rust, no
 Docker run in the loop, and a stale editable install, so the local pass was
 never evidence about the shipping environment.
+
+
+## 2026-09-02 — Growth assumptions: two parameters, one source of trend
+
+`demand_growth_pct` and `capacity_growth_pct` on the scenario, annual, compounded
+daily from `history_end`. Rules committed in `docs/forecast.md` in their own
+commit before any code existed.
+
+**Rejected: one growth control.** Moving demand and capacity together reports a
+comfortable factory at every setting -- the answer a planner is least likely to
+question, and exactly the one `rccp` exists to withhold.
+
+**Rejected: applying the overlay to everything and reporting the overlap.**
+Measured first, not assumed: of 103 smooth and erratic series on the seed-7
+demo, 21 already select a trend term (`ETS(A,A,A)` x11, `ETS(A,Ad,A)` x10).
+A blanket overlay grows those twice while Croston and TSB series grow once --
+two populations, different arithmetic, nothing failing. So AutoETS is refitted
+with the trend forced off, but only for series that actually chose one, so four
+fifths pay nothing for the check and the whole branch is dead at zero growth.
+
+**Rejected: reporting "series eligible for suppression"** instead of the real
+count. It would have been free and would have meant nothing. The report says how
+many fitted trends the assumption displaced, which is a cost the planner is
+paying.
+
+**Rejected: anchoring at `horizon_start`.** It drops the gap between the last
+actual and the first planned bucket -- an error that is small, always in the same
+direction, and invisible in any output.
+
+**Rejected: a second measure holding the un-grown forecast.** Comparing growth
+cases is comparing peer scenarios, which is what the flat scenario model is for.
+`copy_scenario` and `commit_scenario` carry the rates with the rows; a copy that
+reset them would be a different plan wearing the same name.
+
+**Kill condition met.** Zero growth is byte-identical: no refit, no suppression,
+no overlay, and `test_every_published_figure_still_matches_a_fresh_run`
+recomputes the portfolio with every headline number unmoved.
+
+**One defect found in the writing, worth keeping.** The capacity report's
+assumptions line was guarded on a key `rccp`'s report did not carry, so it
+printed nothing when only demand growth was set -- the branch was unreachable
+for one of the two parameters. Caught by running it, not by a test. Now
+parametrised over each parameter and the combination.
+
+**Cost, stated rather than absorbed:** the suite went from roughly three minutes
+to eight. The capacity tests each run the full portfolio through forecast,
+netreq and rccp twice, because a capacity verdict on a handful of SKUs is not a
+capacity verdict. Left as-is; if it becomes intolerable the fix is a
+session-scoped planned scenario, not thinner assertions.
+
+**Not surfaced in the desktop app.** That window has the import and
+column-mapping flow only -- there is no planning screen to put a field on. The
+backend method `scenario.growth` exists and works; a control that nothing
+reaches would be worse than the honest gap.

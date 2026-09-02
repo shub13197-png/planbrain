@@ -13,6 +13,8 @@ established at item 2 pays for itself here.
 """
 
 from ..facts.access import Fact, bucket_spine, read_facts, write_facts
+from ..facts.scenario import growth_of
+from ..forecast.growth import growth_factors
 from .core import ResourceLoad, Routing, compute_load, load_all
 
 DEMAND_TABLE = "fact_supply_demand"
@@ -74,8 +76,25 @@ def run(con, demo, *, scenario_id: int = 0) -> dict:
         keys=[(rid,) for rid in resource_ids], spine=spine, key_index=0,
     )
 
+    # Capacity growth is applied here, on the way in, rather than written back
+    # into fact_capacity. rccp does not own that table -- the hours came from
+    # the system of record, and rewriting someone else's actuals to encode our
+    # assumption would put an assumption where a fact is supposed to be.
+    #
+    # Demand growth is not applied here at all: it is already inside the
+    # releases, having been applied by forecast when it produced the series it
+    # owns. Applying it again would be the double count docs/forecast.md exists
+    # to prevent, one layer further down.
+    growth = growth_of(con, scenario_id)
+    factors = growth_factors(spine, anchor=demo.history_end,
+                             annual_pct=growth.capacity_pct)
+
     loads = load_all(
-        resources={rid: capacity.get(rid, [0.0] * len(spine)) for rid in resource_ids},
+        resources={
+            rid: [hours * factor
+                  for hours, factor in zip(capacity.get(rid, [0.0] * len(spine)), factors)]
+            for rid in resource_ids
+        },
         routings=routings,
         planned_order_release=releases,
     )
@@ -92,6 +111,14 @@ def run(con, demo, *, scenario_id: int = 0) -> dict:
     return {
         "rows_written": rows,
         "buckets": len(spine),
+        "capacity_growth_pct": growth.capacity_pct,
+        # Reported here too, though rccp does not apply it -- it arrives baked
+        # into the releases. A feasibility verdict read without both assumptions
+        # is the number most likely to be quoted onwards, and the first version
+        # of the capacity report printed neither when only demand growth was
+        # set, because this key was missing and the guard was `or`-ed on it.
+        "demand_growth_pct": growth.demand_pct,
+        "growth_anchor": demo.history_end.isoformat(),
         "resources": {
             load.resource_id: {
                 "load_hours": round(load.total_load, 2),

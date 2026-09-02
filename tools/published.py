@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 README = "README.md"
 SERVICE = "docs/service-backtest.md"
 RCCP = "docs/rccp.md"
+FORECAST = "docs/forecast.md"
 HAULPLAN = "docs/haulplan.md"
 DEMOD = "docs/demo.md"
 
@@ -52,6 +53,14 @@ FIGURES = (
     Figure("parts", 200, "200 SKUs", (README,), note="demo shape"),
     Figure("demand_series", 222, "All 222 series", (README,)),
     Figure("history_days", 546, "546 daily buckets", (DEMOD,)),
+
+    # --- what the growth assumption displaces ---------------------------
+    # Published because it is the cost of the one-source-of-trend rule: for
+    # these series AutoETS had inferred a trend from data and the overlay
+    # discards it. Pinned because a change in the demo, the classifier or the
+    # statsforecast version moves it with nothing else noticing.
+    Figure("trends_suppressed", 21, "**21 of 103 already carry a fitted trend.**",
+           (FORECAST,), note="AutoETS series that select a trend term"),
 
     # --- service, full portfolio, seed 7 --------------------------------
     Figure("fitted_fill", 0.972, "**97.2%**", (README,), tolerance=0.002),

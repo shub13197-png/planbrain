@@ -97,10 +97,11 @@ documented in `docs/netreq.md`.
 
 ## Growth assumptions: the rules, committed before the code
 
-**Nothing below has been implemented yet.** It is written first because a growth
+**These rules were committed before any of the code existed**, because a growth
 overlay is the easiest way in this codebase to produce a number that is wrong and
-looks right, and the rules are worth more decided in the cold than defended
-afterwards.
+looks right, and rules are worth more decided in the cold than defended
+afterwards. They are now implemented, and the kill condition below holds: every
+published figure is unchanged, because zero growth is a genuine no-op.
 
 ### Two parameters, never one control
 
@@ -163,7 +164,9 @@ suppression, no overlay, no re-fit. If setting the parameter to zero changes any
 published figure, the feature is wrong and does not ship — a planner who has not
 opted into an assumption must not be silently given one.
 
-That is testable, and it is the assertion written first.
+That is testable, and it is the assertion written first. It holds: with the
+feature in place, `test_every_published_figure_still_matches_a_fresh_run`
+recomputes the whole portfolio and every headline number is where it was.
 
 ### Where each parameter is applied, and why they differ
 
@@ -176,5 +179,37 @@ assumption where a fact is supposed to be.
 Both are read from the scenario rather than passed per call, so two engines
 cannot run the same scenario under different assumptions. Comparing growth cases
 is comparing peer scenarios, which is what the flat scenario model is for; there
-is no second measure holding an un-grown copy.
+is no second measure holding an un-grown copy. `copy_scenario` and
+`commit_scenario` carry the rates with the rows -- a copy that reset them would
+be a different plan wearing the same name.
+
+### What it looks like
+
+```
+python -m tools.capacity_report --source forecast --lot-sizing cost_based \
+                                --demand-growth 30 --capacity-growth 5
+```
+
+```
+Rough-cut capacity - 90 buckets - plan is NOT FEASIBLE
+assumptions: demand +30.0%/yr, capacity +0.0%/yr, compounded from 2026-06-30
+overall load 11,452 h against 12,238 h available (94%)
+```
+
+**The assumptions print with the verdict, not in a footer**, because a
+feasibility answer is the number most likely to be quoted onwards and it must
+not travel without them. The first version of that line printed nothing when
+only demand growth was set -- the guard was `or`-ed on a key `rccp`'s report did
+not carry, so the branch was unreachable for one of the two parameters. It is
+now tested over each parameter and the combination.
+
+**A quarter is not a year**, and the output makes that visible rather than
+flattering: 30%/yr lifts a 90-day horizon's load from 90% to 94% utilisation,
+not to 117%. A planner reading "30% growth" and seeing a 4-point move is seeing
+compounding work correctly.
+
+**`--demand-growth` is refused, not ignored, on a naive-replay plan.** That
+source reads actuals, which no assumption about the future can change. A rate
+that silently did nothing would leave a run that succeeded, with numbers that
+looked considered, and an assumption that never applied.
 

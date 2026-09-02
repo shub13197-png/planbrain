@@ -27,7 +27,21 @@ CREATE TABLE scenario (
     -- NEVER read to resolve a value.
     source_scenario_id  INTEGER REFERENCES scenario (scenario_id),
     status              TEXT NOT NULL DEFAULT 'open'
-                        CHECK (status IN ('open', 'committed', 'archived'))
+                        CHECK (status IN ('open', 'committed', 'archived')),
+    -- Annual growth assumptions, as a percentage. Scalars, not time series, so
+    -- they live here rather than in a fact table.
+    --
+    -- Two separate parameters on purpose. A single control moving both sides
+    -- together reports a comfortable factory at every setting, which is the
+    -- answer a planner is least likely to question and precisely the one rccp
+    -- exists to prevent. See docs/forecast.md.
+    --
+    -- At or below -100% is not a rate, and the engines refuse it; the CHECK is
+    -- here so the database cannot hold one either.
+    demand_growth_pct   REAL NOT NULL DEFAULT 0.0
+                        CHECK (demand_growth_pct > -100.0),
+    capacity_growth_pct REAL NOT NULL DEFAULT 0.0
+                        CHECK (capacity_growth_pct > -100.0)
 );
 
 -- At most one committed scenario. Unique across the rows where status is

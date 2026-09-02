@@ -221,3 +221,24 @@ out of scope exactly as stated.
 into it. They are separate: one is "we detect that a plan cannot be made", the
 other is "we detect that a changeover budget is mis-set". The second is
 evidenced here; the first still stops short of producing feasible plans.
+
+## Capacity growth
+
+`rccp` reads `capacity_growth_pct` from the scenario and scales available hours
+by it on the way in, compounded daily from the last actual.
+
+**Applied on read, not written back into `fact_capacity`.** Those hours came
+from the system of record. Rewriting someone else's actuals to encode our
+assumption would put an assumption where a fact is supposed to be, and the next
+reader would have no way to tell which was which.
+
+**Demand growth is not applied here at all.** It arrives already inside the
+planned order releases, having been applied by `forecast` when it produced the
+series it owns. Applying it again here would be the same double count
+`docs/forecast.md` exists to prevent, one layer further down.
+
+Both rates appear in the report and in the capacity report's header, because a
+feasibility verdict read without its assumptions is the one most likely to be
+quoted onwards. See `docs/forecast.md` for why they are two parameters and never
+one.
+

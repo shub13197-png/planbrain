@@ -17,10 +17,64 @@ things worth far more:
 See docs/decisions.md for what was rejected.
 """
 
+from collections import namedtuple
 from datetime import datetime, timezone
 
 from .access import assert_writable
 from .grains import FACT_TABLES
+
+
+#: The growth assumptions a scenario carries. Two fields, never one: a single
+#: rate moving demand and capacity together would report a comfortable factory
+#: at every setting. See docs/forecast.md.
+Growth = namedtuple("Growth", "demand_pct capacity_pct")
+
+
+def growth_of(con, scenario_id: int) -> Growth:
+    """The growth assumptions recorded on a scenario.
+
+    Read from the scenario rather than passed per call, so two engines cannot
+    run the same scenario under different assumptions -- which would be
+    invisible in every output and irreproducible afterwards.
+    """
+    row = con.execute(
+        "SELECT demand_growth_pct, capacity_growth_pct FROM scenario"
+        " WHERE scenario_id = ?",
+        (scenario_id,),
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"unknown scenario_id {scenario_id}")
+    return Growth(demand_pct=row[0], capacity_pct=row[1])
+
+
+def set_growth(con, *, scenario_id: int, demand_growth_pct: float = None,
+               capacity_growth_pct: float = None) -> Growth:
+    """Record a growth assumption. Returns the scenario's assumptions after the
+    change.
+
+    Either parameter may be omitted to leave it alone, so setting one does not
+    silently reset the other. Refused on a frozen scenario for the same reason
+    fact writes are: a snapshot whose assumptions can still change is not a
+    snapshot, and plan-versus-commit drift stops meaning anything.
+    """
+    assert_writable(con, scenario_id)
+    current = growth_of(con, scenario_id)
+    demand = current.demand_pct if demand_growth_pct is None else float(demand_growth_pct)
+    capacity = current.capacity_pct if capacity_growth_pct is None else float(capacity_growth_pct)
+
+    for label, value in (("demand", demand), ("capacity", capacity)):
+        if value <= -100.0:
+            raise ValueError(
+                f"{label} growth of {value}% is at or below -100%, which is not "
+                f"a rate; nothing can shrink by more than all of itself"
+            )
+
+    con.execute(
+        "UPDATE scenario SET demand_growth_pct = ?, capacity_growth_pct = ?"
+        " WHERE scenario_id = ?",
+        (demand, capacity, scenario_id),
+    )
+    return Growth(demand_pct=demand, capacity_pct=capacity)
 
 
 def copy_scenario(con, *, source_scenario_id: int, name: str, now=None) -> int:
@@ -30,10 +84,16 @@ def copy_scenario(con, *, source_scenario_id: int, name: str, now=None) -> int:
     nothing ever reads it to resolve a value.
     """
     new_id = _next_scenario_id(con)
+    growth = growth_of(con, source_scenario_id)
+    # The assumptions come with the rows. A copy that reset them to zero would
+    # be a different plan wearing the same name -- and the difference would show
+    # up as a quieter forecast with nothing to explain it.
     con.execute(
-        "INSERT INTO scenario (scenario_id, name, created_at, source_scenario_id, status)"
-        " VALUES (?, ?, ?, ?, 'open')",
-        (new_id, name, _stamp(now), source_scenario_id),
+        "INSERT INTO scenario (scenario_id, name, created_at, source_scenario_id,"
+        " status, demand_growth_pct, capacity_growth_pct)"
+        " VALUES (?, ?, ?, ?, 'open', ?, ?)",
+        (new_id, name, _stamp(now), source_scenario_id,
+         growth.demand_pct, growth.capacity_pct),
     )
     _copy_facts(con, source_scenario_id, new_id)
     return new_id
@@ -53,11 +113,14 @@ def commit_scenario(con, *, source_scenario_id: int, name: str, now=None) -> int
     # Created unfrozen, then frozen once the rows have landed. Freezing first
     # would make the scenario immutable before it had any content, and the copy
     # would have to bypass the very guard that makes "frozen" mean something.
+    growth = growth_of(con, source_scenario_id)
     con.execute(
         "INSERT INTO scenario"
-        " (scenario_id, name, created_at, source_scenario_id, status)"
-        " VALUES (?, ?, ?, ?, 'committed')",
-        (new_id, name, stamp, source_scenario_id),
+        " (scenario_id, name, created_at, source_scenario_id, status,"
+        " demand_growth_pct, capacity_growth_pct)"
+        " VALUES (?, ?, ?, ?, 'committed', ?, ?)",
+        (new_id, name, stamp, source_scenario_id,
+         growth.demand_pct, growth.capacity_pct),
     )
     _copy_facts(con, source_scenario_id, new_id)
     con.execute(

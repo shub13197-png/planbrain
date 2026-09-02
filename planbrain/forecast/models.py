@@ -62,7 +62,34 @@ class Fallbacks:
         return {"non_finite": self.non_finite, "model_error": self.model_error}
 
 
-def make_forecaster(pattern: str, *, season_length: int, fallbacks: Fallbacks = None):
+class Suppressions:
+    """How many series had a fitted trend taken away from them.
+
+    Counted rather than estimated, because it is a cost the planner is paying
+    and has a right to see: for these series AutoETS inferred a trend from the
+    data and we discarded it in favour of a portfolio-wide assumption someone
+    typed. A count of "series eligible for suppression" would have been free and
+    would have meant nothing.
+    """
+
+    def __init__(self):
+        self.count = 0
+
+
+def _has_trend(method: str) -> bool:
+    """Does a selected ETS form carry a trend term?
+
+    statsforecast reports the choice as ``ETS(E,T,S)`` -- error, trend, season.
+    ``N`` in the middle means no trend; ``A`` is additive and ``Ad`` damped.
+    """
+    if not isinstance(method, str) or not method.startswith("ETS("):
+        return False
+    letters = method[4:-1].split(",")
+    return len(letters) == 3 and letters[1] != "N"
+
+
+def make_forecaster(pattern: str, *, season_length: int, fallbacks: Fallbacks = None,
+                    suppress_trend: bool = False, suppressions: "Suppressions" = None):
     """Return ``(model_name, forecaster)`` for a demand pattern.
 
     The forecaster is ``(train, horizon) -> list[float]``, the same signature the
@@ -79,13 +106,17 @@ def make_forecaster(pattern: str, *, season_length: int, fallbacks: Fallbacks = 
         )
     name = MODEL_FOR_PATTERN[pattern]
     fallbacks = fallbacks if fallbacks is not None else Fallbacks()
+    suppressions = suppressions if suppressions is not None else Suppressions()
 
     if name == "SeasonalNaive":
         return name, lambda train, h: _clamp(seasonal_naive(train, h, season_length))
 
     def forecaster(train, horizon):
         try:
-            values = _fit_and_predict(name, train, horizon, season_length)
+            values = _fit_and_predict(
+                name, train, horizon, season_length,
+                suppress_trend=suppress_trend, suppressions=suppressions,
+            )
         except Exception:
             # A single pathological series must not kill a 200-SKU run, but the
             # substitution has to show up in the report.
@@ -100,18 +131,38 @@ def make_forecaster(pattern: str, *, season_length: int, fallbacks: Fallbacks = 
     return name, forecaster
 
 
-def _fit_and_predict(name: str, train, horizon: int, season_length: int) -> list:
+def _fit_and_predict(name: str, train, horizon: int, season_length: int, *,
+                     suppress_trend: bool = False, suppressions=None) -> list:
     """Fit one statsforecast model to one series.
 
     Imported lazily so that the pure metric and classification code -- and its
     tests -- do not require statsforecast to be installed.
+
+    ``suppress_trend`` refits AutoETS with the trend term forced off, but only
+    for the series that actually selected one. On the seed-7 demo that is 21 of
+    103 smooth and erratic series, so four fifths pay nothing for the check --
+    and the whole branch is dead unless a growth rate has been set. See
+    docs/forecast.md for why one source of trend is the rule.
     """
     import numpy as np
     from statsforecast.models import AutoETS, CrostonOptimized, TSB
 
     y = np.asarray(train, dtype=np.float64)
     if name == "AutoETS":
-        model = AutoETS(season_length=season_length)
+        if suppress_trend:
+            # Fit first to see what it would have chosen. Skipping straight to
+            # ZNZ would be cheaper and would leave nobody able to say what the
+            # growth assumption displaced.
+            probe = AutoETS(season_length=season_length)
+            probe.fit(y=y)
+            if _has_trend(probe.model_.get("method", "")):
+                if suppressions is not None:
+                    suppressions.count += 1
+                model = AutoETS(season_length=season_length, model="ZNZ")
+            else:
+                return [float(v) for v in probe.predict(h=horizon)["mean"]]
+        else:
+            model = AutoETS(season_length=season_length)
     elif name == "CrostonOptimized":
         model = CrostonOptimized()
     elif name == "TSB":

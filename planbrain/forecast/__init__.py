@@ -12,6 +12,7 @@ storage.
 """
 
 from ..facts.access import Fact, read_facts, write_facts
+from ..facts.scenario import growth_of
 from .backtest import backtest_series, rolling_origin_windows, seasonal_naive
 from .classify import classify, is_intermittent
 from .metrics import (
@@ -23,7 +24,8 @@ from .metrics import (
     scored_mean,
     summarise,
 )
-from .models import Fallbacks, MODEL_FOR_PATTERN, make_forecaster
+from .growth import growth_factors
+from .models import Fallbacks, MODEL_FOR_PATTERN, Suppressions, make_forecaster
 
 TABLE = "fact_supply_demand"
 SOURCE_MEASURE = "demand_actual"
@@ -93,19 +95,31 @@ def run(con, demo, *, scenario_id: int = 0, keys=None, season_length: int = None
     horizon = (demo.horizon_end - demo.horizon_start).days + 1
     spine = [demo.horizon_start + _days(i) for i in range(horizon)]
 
+    # Read from the scenario, never from an argument: two engines running the
+    # same scenario under different assumptions would be invisible in every
+    # output and irreproducible afterwards.
+    growth = growth_of(con, scenario_id)
+    suppress = growth.demand_pct != 0.0
+    # Anchored at the last actual, not the first planned bucket. See
+    # docs/forecast.md -- anchoring at the horizon drops the gap between them,
+    # an error that is small, always in the same direction, and invisible.
+    factors = growth_factors(spine, anchor=demo.history_end, annual_pct=growth.demand_pct)
+
     fallbacks = Fallbacks()
+    suppressions = Suppressions()
     patterns, models, facts = {}, {}, []
     for key in keys:
         series = history.get(key, [])
         profile = classify(series)
         name, forecaster = make_forecaster(
-            profile.pattern, season_length=season_length, fallbacks=fallbacks
+            profile.pattern, season_length=season_length, fallbacks=fallbacks,
+            suppress_trend=suppress, suppressions=suppressions,
         )
         patterns[key] = profile.pattern
         models[key] = name
         facts.extend(
-            Fact(key, bucket, qty)
-            for bucket, qty in zip(spine, forecaster(series, horizon))
+            Fact(key, bucket, qty * factor)
+            for bucket, qty, factor in zip(spine, forecaster(series, horizon), factors)
         )
 
     rows = write_facts(
@@ -117,6 +131,13 @@ def run(con, demo, *, scenario_id: int = 0, keys=None, season_length: int = None
         "pattern_mix": _tally(patterns.values()),
         "model_mix": _tally(models.values()),
         "fallbacks": fallbacks.as_dict(),
+        "demand_growth_pct": growth.demand_pct,
+        "growth_anchor": demo.history_end.isoformat(),
+        # What the assumption displaced. For these series AutoETS had inferred a
+        # trend from the data and it was discarded in favour of the number
+        # someone typed; a planner setting a growth rate should be able to see
+        # how much of the portfolio that overrode.
+        "trends_suppressed": suppressions.count,
     }
 
 

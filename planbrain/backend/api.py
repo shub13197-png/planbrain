@@ -284,9 +284,40 @@ def profile_save(state, directory: str, name: str, table: str, columns: dict,
 
 
 #: The closed method table. Adding an entry is a deliberate act.
+def scenario_growth(state, scenario_id: int = 0, demand_growth_pct: float = None,
+                    capacity_growth_pct: float = None) -> dict:
+    """Read or set a scenario's growth assumptions.
+
+    With neither rate given this reads; with either given it writes that one and
+    leaves the other alone. Both are annual percentages compounded daily from
+    the last actual -- see docs/forecast.md, which also says why demand and
+    capacity are two parameters and never one.
+
+    The engines read these from the scenario rather than from a request, so the
+    interface cannot put one assumption on screen while the plan was built under
+    another.
+    """
+    from ..facts.scenario import growth_of, set_growth
+
+    if demand_growth_pct is None and capacity_growth_pct is None:
+        growth = growth_of(state.con, scenario_id)
+    else:
+        growth = set_growth(
+            state.con, scenario_id=scenario_id,
+            demand_growth_pct=demand_growth_pct,
+            capacity_growth_pct=capacity_growth_pct,
+        )
+    return {
+        "scenario_id": scenario_id,
+        "demand_growth_pct": growth.demand_pct,
+        "capacity_growth_pct": growth.capacity_pct,
+    }
+
+
 METHODS = {
     "ping": ping,
     "demo.build": demo_build,
+    "scenario.growth": scenario_growth,
     "import.check": import_check,
     "import.columns": import_columns,
     "mapping.inspect": mapping_inspect,

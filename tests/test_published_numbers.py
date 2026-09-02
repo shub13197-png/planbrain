@@ -118,6 +118,28 @@ def test_greedy_stays_within_a_whisker_of_the_ceiling(pipeline):
 # the register: pins protect claims, tests protect code
 # --------------------------------------------------------------------------
 
+
+def _suppressed_with_growth(demo) -> int:
+    """How many fitted trends a non-zero growth rate displaces.
+
+    Any non-zero rate gives the same count: the suppression depends on which
+    series select a trend, not on how large the assumption is.
+    """
+    import sqlite3
+
+    from planbrain import forecast
+    from planbrain.demo import populate
+    from planbrain.facts.scenario import set_growth
+
+    root = Path(__file__).resolve().parents[1]
+    con = sqlite3.connect(":memory:")
+    con.execute("PRAGMA foreign_keys = ON")
+    con.executescript((root / "planbrain" / "facts" / "schema.sql").read_text(encoding="utf-8"))
+    populate(con, demo)
+    set_growth(con, scenario_id=0, demand_growth_pct=5.0)
+    return forecast.run(con, demo)["trends_suppressed"]
+
+
 def test_every_published_figure_appears_where_it_says_it_does():
     """register -> docs. A doc that drifts from the register fails.
 
@@ -162,6 +184,12 @@ def test_every_published_figure_still_matches_a_fresh_run(pipeline):
         "parts": len(demo.parts),
         "demand_series": len(demand_keys(demo)),
         "history_days": (demo.history_end - demo.history_start).days + 1,
+        # A separate run with growth set, because the suppression count is only
+        # produced when the one-source-of-trend rule is active. Costs a second
+        # forecast pass over the portfolio; the alternative is a published
+        # number nothing recomputes, which is the failure this register exists
+        # for.
+        "trends_suppressed": _suppressed_with_growth(demo),
         "fitted_fill": policies["forecast"].fill_rate.value,
         "tuned_fill": policies["reorder_point"].fill_rate.value,
         "stale_fill": policies["reorder_point_stale"].fill_rate.value,

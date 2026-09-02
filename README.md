@@ -417,6 +417,33 @@ python -m tools.reconcile_report           # why the two engines differ
 python -m tools.import_data --check data/  # validate your own spreadsheets
 ```
 
+## Growth assumptions
+
+A planner can say "we expect to grow 8% a year" and see what it does to the
+plan:
+
+```bash
+python -m tools.capacity_report --source forecast --lot-sizing cost_based                                 --demand-growth 8 --capacity-growth 3
+```
+
+**Two parameters, never one control.** Demand growth scales what customers take;
+capacity growth scales what the plant can make. A single knob moving both would
+report a comfortable factory at every setting — which is the answer a planner is
+least likely to question, and precisely the one capacity checking exists to
+withhold.
+
+**One source of trend.** `AutoETS` already fits a trend on 21 of 103 smooth and
+erratic series in the demo, so a blanket overlay would grow those twice while
+the Croston and TSB series grew once — two populations, different arithmetic,
+nothing failing. When a growth rate is set, the fitted trend is suppressed and
+the run reports how many series that cost. The rules were written down before
+the code, in [`docs/forecast.md`](docs/forecast.md).
+
+**Zero is a genuine no-op**, asserted rather than assumed: setting the rate to
+zero produces byte-identical numbers, and every published figure above is
+unchanged by the feature existing. A planner who has not opted into an
+assumption is not silently given one.
+
 ## Bringing your own data
 
 The importer is the on-ramp, and `--check` validates without writing anything:
