@@ -7,6 +7,8 @@ that a guarantee verified in the wrong environment is not verified.
 """
 
 import ast
+import os
+import tomllib
 import json
 import subprocess
 import sys
@@ -192,3 +194,69 @@ def test_the_size_budget_is_recorded_where_it_can_be_checked():
     doc = (ROOT / "docs" / "packaging.md").read_text(encoding="utf-8")
     assert "400 MB" in doc
     assert "150 MB" in doc
+
+
+# --------------------------------------------------------------------------
+# the project has to install on a machine that has never installed it
+# --------------------------------------------------------------------------
+
+def test_package_discovery_is_explicit_because_it_cannot_be_automatic():
+    """`pip install -e ".[dev]"` could not work on a clean clone.
+
+    setuptools' flat-layout auto-discovery refuses to build when it finds more
+    than one candidate top-level directory, and this tree has four. The failure
+    is hard, not a warning: "Multiple top-level packages discovered in a
+    flat-layout".
+
+    It went unnoticed for the life of the project because the development
+    environment held an editable install from back when the tree had one
+    top-level directory, and an install already in place is never re-resolved.
+    The first line of the README, of `docs/install.md` and of every CI job was
+    a command nobody could run. It surfaced on the first push to a real runner
+    -- the same lesson as the packaged offline audit, which was verified in a
+    checkout and turned out to differ in the environment that shipped.
+
+    The second half of this test is the part that matters: it asserts the
+    setting is *load-bearing* by confirming discovery would still be ambiguous
+    without it. A config line that has quietly stopped doing anything is the
+    shape this project keeps finding, so the guard checks the condition rather
+    than the presence of the fix.
+    """
+    root = Path(__file__).resolve().parents[1]
+    config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+
+    find = config["tool"]["setuptools"]["packages"]["find"]
+    assert "planbrain*" in find["include"], (
+        "the shipped package must be named explicitly; auto-discovery cannot "
+        "resolve this tree"
+    )
+
+    candidates = sorted(
+        d.name for d in root.iterdir()
+        if d.is_dir() and not d.name.startswith((".", "_"))
+        and (d / "__init__.py").exists()
+    )
+    assert len(candidates) > 1, (
+        f"only {candidates} looks like a top-level package now. Auto-discovery "
+        f"would succeed on its own, so this test no longer proves the explicit "
+        f"declaration is doing anything -- check whether it still is."
+    )
+
+
+def test_the_build_backend_resolves_this_tree():
+    """The call that actually failed, run directly.
+
+    `get_requires_for_build_editable` is the first thing pip invokes and the
+    step that raised. Running it here costs about a second and needs no network,
+    which makes the real check cheap enough that CI is not the only place it
+    happens.
+    """
+    from setuptools.build_meta import get_requires_for_build_editable
+
+    root = Path(__file__).resolve().parents[1]
+    previous = os.getcwd()
+    os.chdir(root)
+    try:
+        get_requires_for_build_editable({})
+    finally:
+        os.chdir(previous)

@@ -41,6 +41,24 @@ dev = [
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+# Explicit, because auto-discovery cannot work here and fails hard rather than
+# guessing. A flat layout with four top-level directories -- `planbrain`,
+# `packaging`, `desktop`, `datasets` -- is ambiguous, so setuptools refuses to
+# build at all: "Multiple top-level packages discovered in a flat-layout".
+#
+# This went unnoticed because the local environment had an editable install from
+# back when the tree had one top-level directory, and an install already in place
+# is never re-resolved. `pip install -e ".[dev]"` -- the first line of the README,
+# of docs/install.md and of every CI job -- could not have worked on a clean
+# clone. Found by the first push to a real runner, which is the environment that
+# matters and the one nothing here had ever run in.
+#
+# Only `planbrain` ships. `tools` stays a repo-root module reached through the
+# pythonpath setting below, `packaging` holds build scripts, and `desktop` is
+# Rust and HTML.
+[tool.setuptools.packages.find]
+include = ["planbrain*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # The repo root, so `tools` imports the same way inside the container as it does

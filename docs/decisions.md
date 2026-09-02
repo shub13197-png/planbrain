@@ -1226,3 +1226,43 @@ beside it. It catches a truncated download or a bad mirror, and that is all it
 claims to do until a certificate exists.
 
 **Draft, not published.** A human looks before it is public.
+
+
+## 2026-09-02 — FINDING: the project could not be installed from a clean clone
+
+The first push to GitHub failed on the first line of every CI job:
+
+    pip install -e ".[dev]"
+    error: Multiple top-level packages discovered in a flat-layout:
+           ['desktop', 'datasets', 'packaging', 'planbrain']
+
+setuptools' auto-discovery refuses to build when a flat layout offers more than
+one candidate top-level directory. `pyproject.toml` declared no packages at all,
+so this had been true since `packaging/` was added.
+
+**Why nothing caught it.** The development environment held an editable install
+from when the tree had one top-level directory, and pip never re-resolves an
+install that is already in place. Every local run used it. The command in the
+README, in `docs/install.md` and in all three workflows was one nobody could
+have run.
+
+**Same shape as the packaged offline audit**, which was verified in a checkout
+and turned out to differ in the environment that ships, and the same shape as
+the `externalBin` mismatch earlier today: correct locally, wrong in the
+environment that matters, and no local test able to tell.
+
+**Fixed** with an explicit `[tool.setuptools.packages.find]` naming
+`planbrain*`. `tools` stays a repo-root module on the pytest pythonpath,
+`packaging` holds build scripts, `desktop` is Rust and HTML; none of them ship.
+
+**Two guards**, both verified by removing the fix and watching them fail. One
+invokes `get_requires_for_build_editable` directly -- the call that raised --
+which costs a second and needs no network, so the real check is not CI-only. The
+other asserts the setting is still *load-bearing*, by confirming more than one
+top-level package directory remains: a config line that has quietly stopped
+doing anything is a shape this project keeps finding.
+
+**The uncomfortable part:** the previous commit's message says the release
+pipeline runs every backend gate before bundling. It does, and none of them
+would ever have run, because the job could not get past its install step. The
+gates were real and the path to them was not.
