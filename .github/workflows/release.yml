@@ -1,0 +1,179 @@
+name: release
+
+# Produces the installers a user downloads, and attaches them to a GitHub
+# Release with checksums.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Or run it by hand from the Actions tab to get artifacts without publishing.
+#
+# No cross-compilation: each installer is built on its own OS. Cross-compiled
+# binaries with native extensions -- numpy, scipy, statsmodels -- fail in ways
+# that surface on a customer's machine rather than in CI.
+
+on:
+  push:
+    tags: ["v*"]
+  # A manual run builds and uploads artifacts but never publishes: a release
+  # needs a tag to attach to, so an "also publish" input would fail every time
+  # it was used off a tag.
+  workflow_dispatch:
+
+permissions:
+  contents: write        # needed to create the Release
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
+            ext: ".exe"
+          - os: macos-latest
+            triple: aarch64-apple-darwin
+            ext: ""
+          - os: macos-13          # Intel. A separate runner, not a cross-build.
+            triple: x86_64-apple-darwin
+            ext: ""
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "${{ matrix.triple }}" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+
+      # --- the Python backend -------------------------------------------
+      - name: Install build dependencies
+        run: pip install -e ".[dev]" pyinstaller pillow
+
+      - name: Build the backend
+        run: pyinstaller packaging/backend.spec --noconfirm --distpath build/dist --workpath build/work
+
+      - name: Size against the committed budget
+        run: python packaging/check_size.py build/dist/planbrain-backend
+
+      - name: Bundle identity -- every entry allowlisted, nothing forbidden
+        run: python packaging/bundle_manifest.py build/dist/planbrain-backend --workpath build/work
+
+      - name: The packaged backend reports the guard engaged
+        shell: bash
+        run: |
+          printf '%s\n%s\n' '{"id":1,"method":"ping"}' '{"id":2,"method":"shutdown"}' \
+            | ./build/dist/planbrain-backend/planbrain-backend${{ matrix.ext }} \
+            | tee handshake.jsonl
+          python packaging/check_offline_run.py handshake.jsonl --no-demo
+
+      # --- the shell -----------------------------------------------------
+      - name: Generate the icon set
+        run: python packaging/make_icons.py
+
+      - name: Stage the backend as a bundled resource
+        # The whole one-dir tree, not a single binary: numpy and scipy carry
+        # native libraries that must sit beside the executable.
+        shell: bash
+        run: |
+          mkdir -p desktop/src-tauri/binaries
+          cp -r build/dist/planbrain-backend desktop/src-tauri/binaries/planbrain-backend
+          ls desktop/src-tauri/binaries/planbrain-backend/planbrain-backend${{ matrix.ext }}
+
+      - run: npm install
+        working-directory: desktop
+
+      - name: Build the installer
+        working-directory: desktop
+        run: npx tauri build --target ${{ matrix.triple }}
+
+      # --- collect and checksum ------------------------------------------
+      - name: Collect installers and checksums
+        shell: bash
+        run: |
+          mkdir -p dist
+          find desktop/src-tauri/target -type f \
+            \( -name '*.msi' -o -name '*.dmg' -o -name '*-setup.exe' \) \
+            -exec cp {} dist/ \;
+          if [ -z "$(ls -A dist)" ]; then
+            # An empty artifact directory would upload cleanly and publish a
+            # release with nothing in it.
+            echo "no installer was produced -- the bundle step did not fail but wrote nothing" >&2
+            exit 1
+          fi
+          cd dist
+          for f in *; do
+            if command -v sha256sum > /dev/null; then
+              sha256sum "$f" >> SHA256SUMS.txt      # Linux, and Git Bash on Windows
+            else
+              shasum -a 256 "$f" >> SHA256SUMS.txt  # macOS
+            fi
+          done
+          cat SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: planbrain-${{ matrix.triple }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts }
+
+      - name: Gather every installer and merge the checksums
+        run: |
+          mkdir -p release
+          find artifacts -type f ! -name 'SHA256SUMS.txt' -exec cp {} release/ \;
+          find artifacts -name 'SHA256SUMS.txt' -exec cat {} \; > release/SHA256SUMS.txt
+          test -s release/SHA256SUMS.txt || { echo "no checksums produced" >&2; exit 1; }
+          ls -la release
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          draft: true          # a human checks before it is public
+          generate_release_notes: true
+          body: |
+            ## Planning Brain
+
+            Supply chain planning that runs **entirely on your machine**. No
+            account, no network access, no telemetry.
+
+            ### Which file
+
+            | you have | download |
+            |---|---|
+            | Windows 10/11 | `.msi` (or `-setup.exe` if the MSI is blocked by policy) |
+            | Mac, Apple silicon (M1 and later) | the `aarch64` `.dmg` |
+            | Mac, Intel | the `x64` `.dmg` |
+
+            ### These installers are not code-signed
+
+            Both platforms will show a warning that sounds serious. It is not a
+            statement about this software: signing identifies the publisher, it
+            does not inspect the code. **Read
+            [docs/install.md](docs/install.md) before you start** — it says
+            exactly which dialog you will see and which button is hidden behind
+            "More info".
+
+            Verify what you downloaded against `SHA256SUMS.txt`:
+
+            ```
+            sha256sum -c SHA256SUMS.txt        # Linux/macOS
+            certutil -hashfile <file> SHA256   # Windows
+            ```
+
+            ### What it installs
+
+            One application and one SQLite file. No service, no daemon, no
+            scheduled task, no update check. Uninstalling leaves your planning
+            data alone — the paths are in the install guide.

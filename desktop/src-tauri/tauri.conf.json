@@ -9,9 +9,12 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Planning Brain",
         "width": 1280,
-        "height": 820
+        "height": 860,
+        "minWidth": 900,
+        "minHeight": 600
       }
     ],
     "security": {
@@ -22,16 +25,29 @@
     "active": true,
     "targets": [
       "msi",
+      "nsis",
       "dmg"
     ],
-    "resources": [],
-    "externalBin": [
-      "binaries/planbrain-backend"
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Business",
+    "shortDescription": "Supply chain planning that runs entirely offline",
+    "longDescription": "A supply chain planning layer for small manufacturers. Forecasts demand, plans material requirements, checks capacity and balances long-haul work across a fleet. Runs entirely on this machine: no account, no network access, no telemetry.",
+    "resources": [
+      "binaries/planbrain-backend/**/*"
     ],
     "windows": {
       "webviewInstallMode": {
         "type": "offlineInstaller"
       }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0"
     }
   }
 }

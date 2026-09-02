@@ -16,7 +16,7 @@ having audited correctly, or on the audit staying true as versions move.
 
 ## Result
 
-**The full pipeline and all 604 tests run with no network interface.** Verified
+**The full pipeline and the whole test suite run with no network interface.** Verified
 by `docker run --network=none`, not by inspection.
 
 The in-process guard is verified separately **with a network available**, so

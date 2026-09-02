@@ -238,7 +238,7 @@ is verified rather than argued:
 
 | check | what it establishes | where |
 |---|---|---|
-| CI runs the pipeline and all 604 tests with `--network=none` | the pipeline needs nothing from the network — no interface exists, so a leak cannot succeed | `.github/workflows/ci.yml`, job `offline` |
+| CI runs the pipeline and the whole test suite with `--network=none` | the pipeline needs nothing from the network — no interface exists, so a leak cannot succeed | `.github/workflows/ci.yml`, job `offline` |
 | In-process socket block, tested **with** a network available | a stray call fails loudly on a customer's laptop rather than succeeding in silence | `tests/test_offline.py::test_the_whole_pipeline_runs_with_sockets_blocked` |
 | Dependency audit across all 29 runtime distributions | no telemetry, no version checks, no model downloads; the two conditional paths checked individually | [`docs/offline.md`](docs/offline.md) |
 
@@ -296,6 +296,12 @@ after seeing a result cannot masquerade as one written before it.
 * **Safety stock is days of cover**, not a solved service-level target.
 * **Unmet demand is modelled as lost, not backordered.** The conservative
   reading; revisit first if a customer genuinely backorders.
+* **The desktop shell has never been compiled.** The engines are tested to
+  death; the Tauri wrapper around them is not, because no Rust toolchain was
+  available here. The cross-file rules are asserted — the path the shell
+  resolves against the path the bundle installs, the plugins the frontend
+  calls against the crates that provide them — and that is a different thing
+  from a build. The first real run is where this surfaces something.
 
 ## Scope boundaries — refused, not "not yet"
 
@@ -363,6 +369,31 @@ quietly excluding the hard ones is how a portfolio average gets improved.
 are the more useful half: they stop the same choice being relitigated in three
 weeks.
 
+## Installing it
+
+For a planner rather than a developer: take an installer from the
+[releases page](https://github.com/shub13197-png/planbrain/releases). Windows gets
+an `.msi` (or an `-setup.exe` where policy blocks MSI), macOS gets a `.dmg` for
+Apple Silicon and another for Intel. Every release carries `SHA256SUMS.txt` so
+you can check the download is what CI built.
+
+There is no account, no sign-in and no network access at any point. The
+application is one program and one SQLite file; uninstalling leaves your data
+alone.
+
+**The installers are not code-signed**, so Windows and macOS will both show a
+warning that sounds worse than it is — signing identifies a publisher, it does
+not inspect code. [`docs/install.md`](docs/install.md) says exactly which dialog
+you will see, which button is hidden behind "More info", and what to do on
+Sequoia where the old right-click trick no longer works. Read it before you
+start; the alternative is concluding the download is broken.
+
+**Nobody has installed one yet.** The workflow that builds them
+(`.github/workflows/release.yml`) has never run, because there is no Rust
+toolchain in the environment this was developed in — see the unverified-surfaces
+table in [`docs/packaging.md`](docs/packaging.md), which lists what CI-green
+would and would not prove.
+
 ## Running it
 
 ```bash
@@ -375,7 +406,7 @@ or without Docker:
 ```bash
 pip install -e ".[dev]"
 python -m tools.demo                       # the same end-to-end run
-pytest -q                                  # 625 tests
+pytest -q                                  # the whole suite, about 90s
 python -m tools.check_fact_access          # the CI gate
 python -m tools.seed_demo                  # build the demo database
 python -m tools.service_report --sample 40 # the evidence above

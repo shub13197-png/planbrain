@@ -19,6 +19,7 @@ update both the docs and the constants below.
 """
 
 import sqlite3
+import re
 from pathlib import Path
 
 import pytest
@@ -253,3 +254,32 @@ def test_the_fitted_forecast_still_beats_both_reorder_points(pipeline):
     # from the full portfolio via `--sample 0` and are not asserted here on a
     # 24-series sample.
     assert fitted > tuned > stale > naive
+
+
+def test_no_document_publishes_a_test_count():
+    """A count of tests is a number that goes stale on the next commit that adds
+    one, and it was stale in two places at once -- the README claiming 604 in one
+    line and 625 in another, against a suite that had grown past both.
+
+    It also says nothing. "604 tests pass" is not evidence about the product; the
+    claims that carry weight are the fill rates in the register above, which are
+    pinned to a fresh run. So the rule is that prose does not quote a suite size
+    at all, rather than that the quoted size must be kept accurate -- there is no
+    version of this number worth the maintenance.
+
+    Numbers of *things the product handles* are fine and are not matched here;
+    this looks only for a count immediately qualifying the word "tests".
+    """
+    root = Path(__file__).resolve().parents[1]
+    pattern = re.compile(r"\b\d{2,}\s+(?:passing\s+)?tests\b")
+    offenders = []
+    for path in [root / "README.md", *sorted((root / "docs").rglob("*.md"))]:
+        for number, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            if pattern.search(line):
+                offenders.append(f"{path.relative_to(root)}:{number}: {line.strip()}")
+    assert offenders == [], (
+        "these publish a test count, which rots on the next commit:\n"
+        + "\n".join(offenders)
+    )

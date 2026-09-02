@@ -304,6 +304,36 @@ evidence against a fluke and is **not** evidence about anyone else's data.
 **Why at the top:** a reader will find the limit eventually. Finding it stated
 plainly builds confidence; finding it themselves destroys it.
 
+## 12. When two files describe the same thing, assert the rule between them
+
+Review reads one file at a time. A defect that lives *between* two files survives
+it, because each file is correct on its own terms.
+
+The shell declared the Python backend as a Tauri `externalBin`, which ships one
+binary. The PyInstaller spec produces a one-dir tree of 890 files, because numpy
+and scipy carry native libraries that must sit beside the executable. **Both were
+right.** The config was a correct `externalBin` config; the spec was a correct
+one-dir spec. Each was written while looking at the other's *purpose* rather than
+its *shape*, and neither file contains the contradiction.
+
+Nothing could have failed, either. There was no Rust toolchain, so the shell had
+never been compiled, and a test of the config alone would have passed. It was
+found by asking a question no test asks: **is this actually installable?**
+
+The response is not "compile it in CI" — that would catch this one and is worth
+doing, but it says nothing about the next pair. The response is to write down the
+rule that spans the files and assert *it*: the path the Rust resolves must be the
+directory the bundle installs, the plugins the frontend reaches for must be
+crates that are present and initialised, the platforms the release builds must be
+the platforms the install guide names.
+
+Those assertions run without a toolchain, which is the point — they are cheap
+precisely where the expensive verification is unavailable.
+
+**The tell for where to look:** any value written down more than once. Three
+copies of a path is not a smell to refactor away when two of the copies live in
+languages that cannot read each other. It is a rule to assert.
+
 ---
 
 ## The guard sweep
@@ -320,6 +350,8 @@ Every guard in this repository, and where the thing it guards actually lives:
 | `test_encoding` | non-UTF-8 files | **Yes.** Walks every text suffix in the repo |
 | `test_no_silent_defaults` | masking defaults | **Partially.** Covers the sites found in one sweep; it is a snapshot, not a rule that catches new ones |
 | **published-figure pins** | figures in prose | **No — this sweep found it.** Three of eleven documents |
+| `test_no_document_publishes_a_test_count` | a number that rots on the next commit | **Yes.** The README carried 604 in one line and 625 in another; the rule is that prose does not quote a suite size at all |
+| `test_desktop_shell` | the shell and the config agreeing with each other | **Yes, and only that.** It asserts cross-file rules and explicitly does not prove the shell compiles — see practice 12 |
 
 The last row was live: `docs/service-backtest.md`, the proof-of-value report,
 carried pre-resize numbers from a 40-series sample while the README carried

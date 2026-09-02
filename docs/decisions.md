@@ -1152,3 +1152,77 @@ by setup-to-holding ratios that vary across the portfolio.
 a SKU-year where the economics want ~43, so the plant was sized for fewer
 changeovers than it needs. The convergence and the residual infeasibility at 87%
 are the same fact from two directions.
+
+
+## 2026-09-02 — The shell shipped a shape the backend does not have
+
+**Found by asking whether the thing is installable, not by a failing test.**
+The desktop shell declared the backend as a Tauri `externalBin` — one file, with
+the host target triple appended to its name. The PyInstaller build is a one-dir
+tree: an executable plus an `_internal` directory of 889 files. The CI step
+renamed the executable and left the tree behind.
+
+Neither file was wrong on its own. There was no Rust toolchain here, so nothing
+had ever compiled the shell, and no test of the config alone could have failed.
+
+**Decided:** the backend ships under `resources` as a whole tree, and is spawned
+with `std::process::Command` from `BaseDirectory::Resource`.
+
+**Rejected — `tauri-plugin-shell`**, the conventional way to launch a sidecar.
+We are not running a user-supplied command; we run one binary we shipped at a
+path we computed. The plugin adds a scope to configure, a permission to grant and
+a dependency to audit, and buys nothing. `capabilities/default.json` therefore
+grants `core:default` and `dialog:allow-open` and nothing else, asserted as an
+exact set.
+
+**Rejected — deduplicating the three copies of the backend path.** It appears in
+the Rust constant, the config glob and the workflow's staging step. The config
+cannot read the Rust and the workflow cannot read either, so the copies stay and
+a test asserts they agree. This became practice 12 in `docs/method.md`.
+
+**Still unverified, and labelled so:** that a `resources` glob installs to a path
+preserved relative to `tauri.conf.json` is read from Tauri's documentation, not
+observed. The three copies are asserted to agree with each other; nothing here
+proves they agree with the bundler.
+
+## 2026-09-02 — Test counts removed from prose rather than corrected
+
+The README published two different suite sizes, 604 in one line and 625 in
+another, against a suite that had grown past both; `docs/offline.md` carried
+the 604. The guard below now rejects this paragraph if it quotes either the
+old way round, which is the check declining to make an exception for the
+commit that introduced it.
+
+**Rejected: pinning the count to the register.** It would be accurate and it
+would need updating on every commit that adds a test — a pin that is edited
+whenever it fires protects nothing, which is practice 10 applied to prose.
+
+**Decided:** prose does not quote a suite size at all. The number is not evidence
+about the product; the claims that carry weight are the fill rates, which are
+pinned to a fresh run. `test_no_document_publishes_a_test_count` enforces it
+across the README and every file in `docs/`, and was verified by breaking it.
+
+## 2026-09-02 — Distribution: draft releases, checksums, no signature
+
+`.github/workflows/release.yml` builds three targets on their own runners —
+Windows MSI and NSIS, macOS DMG for Apple Silicon and for Intel — and attaches
+them to a **draft** GitHub Release with `SHA256SUMS.txt`.
+
+**NSIS as well as MSI** because some corporate policies block MSI outright, and
+a planner who cannot install the thing is not a user.
+
+**Intel macOS added.** `docs/install.md` had said Intel builds were not produced;
+that sentence would have quietly become false when the runner was added, so a
+test now ties the release matrix to the platforms the guide names.
+
+**The checksums exist because the install guide already told people to compare
+one** and nothing produced the file. Instructions pointing at an artifact that
+does not exist are worse than no instructions: a user who follows them concludes
+the download is wrong.
+
+**Stated in the release notes rather than implied:** a checksum is not a
+signature. Anyone able to replace the installer could replace the checksum file
+beside it. It catches a truncated download or a bad mirror, and that is all it
+claims to do until a certificate exists.
+
+**Draft, not published.** A human looks before it is public.

@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The minimum this application needs: a window, and a file picker for choosing a spreadsheet. No shell execution permission is granted -- the backend is spawned directly by the Rust process at a path we computed, so there is no scope for a shell plugin to widen.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open"
+  ]
+}

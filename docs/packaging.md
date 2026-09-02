@@ -10,7 +10,7 @@ line; nothing above it was revised afterwards.
 | Shell | Tauri 2 | Native webview, no bundled Chromium. A planning grid is a table; it does not need 150 MB of browser. |
 | Backend | Python, PyInstaller one-dir sidecar | The engines already exist and are the product. Rewriting `netreq` in Rust would be re-deriving verified arithmetic for no gain. |
 | Store | SQLite | Single file, no service, no port, nothing for a user to install or a firewall to notice. PostgreSQL stays the option for a hosted tier. |
-| Installers | MSI (Windows), DMG (macOS) | Built on their own OS runners. |
+| Installers | MSI and NSIS (Windows), DMG (macOS, Apple Silicon and Intel) | Built on their own OS runners. NSIS because some corporate policies block MSI outright, and a planner who cannot install the thing is not a user. |
 
 ## The IPC decision, and it is forced by the offline guarantee
 
@@ -46,6 +46,85 @@ than in CI.
 platforms will warn, both warnings are alarming, and telling a user what to
 expect before they see it is the difference between a cautious install and an
 abandoned one.
+
+## The shell shipped a shape the backend does not have
+
+**Found by asking "is this actually installable?" rather than by a failing
+test**, because nothing here had ever compiled the shell and so nothing could
+fail.
+
+The backend was declared as a Tauri **`externalBin`**. That mechanism ships *one
+file* and appends the host target triple to its name. Our PyInstaller build is a
+**one-dir tree**: an executable plus an `_internal` directory of 889 files,
+because numpy and scipy carry native libraries that must sit beside the
+executable to load at all. The CI step dutifully renamed the executable and left
+the tree behind.
+
+Both halves were internally consistent, which is why this survived review. The
+config was a correct `externalBin` config; the spec was a correct one-dir spec;
+each was written while looking at the other's *purpose* rather than its *shape*.
+
+**The fix is `resources`**, which ships arbitrary trees and preserves each path
+relative to `tauri.conf.json`. The shell resolves
+`binaries/planbrain-backend/planbrain-backend[.exe]` against
+`BaseDirectory::Resource`.
+
+That path is now written down in three places — the Rust constant, the config
+glob, and the workflow's staging step — and
+`tests/test_desktop_shell.py` asserts all three agree. Three copies of a string
+is not ideal; three copies that can drift silently and fail at *launch* rather
+than at build is worse. The rule is asserted rather than the copies removed,
+because the config cannot read the Rust and the workflow cannot read either.
+
+### Spawned by `std::process`, not the shell plugin
+
+The obvious way to start a sidecar in Tauri is `tauri-plugin-shell`. We do not
+use it. We are not running a user-supplied command; we are running one binary we
+shipped, at a path we computed. The plugin would add a scope to configure, a
+permission to grant, and a dependency to audit, and would buy nothing.
+
+The consequence is that `capabilities/default.json` grants exactly two things:
+`core:default` for a window, and `dialog:allow-open` for choosing a spreadsheet.
+Not `dialog:allow-save`, not `fs:`, not `shell:`. The set is asserted as an exact
+set, so widening it is a decision someone has to make on purpose.
+
+### The icon set is drawn in code
+
+There was no icon set at all — the bundler would have failed on its first run.
+`packaging/make_icons.py` generates all sixteen files, both containers included,
+from one drawing. The ICNS container is written by hand because `iconutil` is
+macOS-only and the icons have to be reproducible on any runner.
+
+Generated rather than committed as binaries so a reviewer can see what the mark
+is without opening an image editor, and so it can be re-rendered at any size. The
+release generates them before it bundles, and a test asserts that order: a build
+that skipped the generator would bundle whatever happened to be stale in the
+checkout, which is the failure that looks like success.
+
+## Getting it to a user
+
+An installer nobody can find is not a distribution. `.github/workflows/release.yml`
+runs on a version tag, builds all three targets on their own runners, and
+attaches them to a **draft** GitHub Release with `SHA256SUMS.txt`.
+
+Draft, because a human should look before it is public.
+
+**The checksums exist because the install guide already told people to compare
+one.** It had said so for weeks and nothing produced the file — instructions
+pointing at an artifact that does not exist, which is worse than no instructions,
+because a user who follows them concludes the download is wrong. A test now ties
+the two together: the release must generate `SHA256SUMS.txt` and the guide must
+name it.
+
+The checksum is not a signature and the release notes say so. Anyone able to
+replace the installer could replace the checksum file beside it. It catches a
+truncated download or a bad mirror, which is the realistic failure, and it is
+what we have until a certificate exists.
+
+The release runs `check_size.py`, `bundle_manifest.py` and `check_offline_run.py`
+before it bundles anything, and a test asserts it does. The shipped artifact must
+not be the least-verified build in the project, which is what it becomes the
+moment the installer path gets its own shortcut.
 
 ## Size budget, committed before the first build
 
@@ -148,6 +227,8 @@ work end to end. A reader should not mistake CI-green for verified.
 |---|---|---|
 | **The Tauri compile** | **unverified.** No Rust toolchain in the environment this was written in, so `Cargo.toml`, `main.rs` and `tauri.conf.json` have never been compiled. | One successful `installer` job, then launching the MSI and DMG and clicking both buttons. |
 | **The sidecar handshake through Tauri** | **unverified.** The stdio protocol is tested against the packaged binary directly; it has never been driven by the Rust shell. | The same run — the frontend showing "Offline" in its status bar is the proof. |
+| **The resource path** | **unverified.** That a `resources` glob installs to a path preserved relative to `tauri.conf.json` is read from Tauri's documentation, not observed. The three copies of the path are asserted to agree with *each other*; nothing here proves they agree with the bundler. | An installed build launching. If the assumption is wrong the symptom is specific and the error message names the path it looked for. |
+| **The installer on a real machine** | **unverified.** No MSI, NSIS bundle or DMG has been produced. The SmartScreen and Gatekeeper text in `docs/install.md` is from the platform documentation, not from watching the dialogs appear. | Downloading a release artifact and installing it on a machine that has never seen the source. |
 
 Everything else in this document was built and run: the sidecar starts in 2.4s,
 answers requests with the guard engaged, and passes the size and identity gates

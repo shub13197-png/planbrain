@@ -47,7 +47,10 @@
 
 <h2>1 &middot; Choose a file</h2>
 <div class="row">
-  <input type="text" id="path" placeholder="C:\path\to\your-spreadsheet.xlsx">
+  <button id="browse">Choose file&hellip;</button>
+  <!-- The picker is the path most people take; typing stays available because
+       a path pasted from somewhere else is faster than navigating to it. -->
+  <input type="text" id="path" placeholder="&hellip;or paste a path to a .xlsx, .xlsm or .csv">
   <select id="table"></select>
   <button id="inspect">Inspect</button>
 </div>
@@ -88,6 +91,9 @@
 // in an app whose central claim is that nothing leaves the machine.
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
+// The only capability granted beyond a window. `save` is deliberately not
+// granted: nothing here writes outside its own data directory.
+const { open } = window.__TAURI__.dialog;
 
 const $ = (id) => document.getElementById(id);
 const pending = new Map();
@@ -141,6 +147,19 @@ async function loadProfiles() {
 }
 
 // --- 1. inspect ------------------------------------------------------------
+$("browse").onclick = async () => {
+  // A typed path was the first version, and it is a poor first run for the
+  // person this product is for -- a planner with a spreadsheet, not a developer
+  // who knows what a path is.
+  const picked = await open({
+    multiple: false,
+    filters: [{ name: "Spreadsheets", extensions: ["xlsx", "xlsm", "csv"] }],
+  });
+  if (!picked) return;              // cancelled, which is not an error
+  $("path").value = picked;
+  $("inspect").click();
+};
+
 $("inspect").onclick = async () => {
   const path = $("path").value.trim();
   if (!path) return;
