@@ -94,3 +94,87 @@ that would produce a confident, empty plan.
 
 The per-depot lead-time limitation of bottom-up aggregation is a known gap,
 documented in `docs/netreq.md`.
+
+## Growth assumptions: the rules, committed before the code
+
+**Nothing below has been implemented yet.** It is written first because a growth
+overlay is the easiest way in this codebase to produce a number that is wrong and
+looks right, and the rules are worth more decided in the cold than defended
+afterwards.
+
+### Two parameters, never one control
+
+`demand_growth_pct` scales what customers are expected to take.
+`capacity_growth_pct` scales what the plant can make. They are separate inputs
+and neither defaults from the other.
+
+The reason is that `rccp` exists to say when the plan does not fit. A single
+"growth" control moving both sides together would report a comfortable factory
+at every setting — demand +20% against capacity +20% is the most reassuring
+possible wrong answer, and the one a planner is least likely to question.
+
+### Annual rate, compounded daily, anchored at the last actual
+
+    factor(bucket) = (1 + g) ** ((bucket - history_end).days / 365)
+
+**Anchored at `history_end`, not `horizon_start`.** The horizon usually begins
+some days after the last actual, and anchoring there would silently discard that
+gap — the first planned bucket would carry no growth at all despite being weeks
+past the level the history establishes. The error is small, always in the same
+direction, and invisible.
+
+365, not 365.25 and not the working calendar: growth is a business assumption
+quoted per year, and a leap day is noise against a number someone typed to the
+nearest percent.
+
+### One source of trend, and the measurement that forced the rule
+
+`AutoETS` selects among trend forms. On the seed-7 demo, of 103 smooth and
+erratic series:
+
+| selected form | count |
+|---|---|
+| `ETS(A,N,A)` — no trend | 82 |
+| `ETS(A,A,A)` — additive trend | 11 |
+| `ETS(A,Ad,A)` — damped trend | 10 |
+
+**21 of 103 already carry a fitted trend.** Multiplying those by `(1+g)^t` grows
+them twice. Croston and TSB carry no trend at all, so intermittent and lumpy
+series would be grown exactly once. The portfolio would split into two
+populations with different arithmetic applied to each, and nothing would fail.
+
+**Rule: when `demand_growth_pct` is non-zero, AutoETS is fitted with the trend
+term forced off (`model="ZNZ"`).** Then there is exactly one source of trend in
+the plan and it is the number the planner typed. The run report states how many
+series had a fitted trend suppressed, because that is a real cost — for those 21
+series the model had inferred a trend from data and we discarded it in favour of
+a portfolio-wide assumption.
+
+Rejected: applying the overlay everywhere and reporting the overlap. It is
+honest only if someone reads the report, and the two populations still get
+different arithmetic. Rejected: overlaying only the flat-rate models, which
+avoids the double count but makes the portfolio grow unevenly for a reason that
+does not appear anywhere in the output.
+
+### The kill condition, stated before the first run
+
+**Growth of zero must produce byte-identical numbers to today's plan.** No
+suppression, no overlay, no re-fit. If setting the parameter to zero changes any
+published figure, the feature is wrong and does not ship — a planner who has not
+opted into an assumption must not be silently given one.
+
+That is testable, and it is the assertion written first.
+
+### Where each parameter is applied, and why they differ
+
+`forecast` applies demand growth before writing, because it *produces* that
+series and owns it. `rccp` applies capacity growth when reading available hours,
+because it does not own `fact_capacity` — that came from the system of record,
+and rewriting someone else's actuals to encode our assumption would put an
+assumption where a fact is supposed to be.
+
+Both are read from the scenario rather than passed per call, so two engines
+cannot run the same scenario under different assumptions. Comparing growth cases
+is comparing peer scenarios, which is what the flat scenario model is for; there
+is no second measure holding an un-grown copy.
+
