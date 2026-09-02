@@ -8,6 +8,7 @@ that a guarantee verified in the wrong environment is not verified.
 
 import ast
 import os
+import re
 import tomllib
 import json
 import subprocess
@@ -260,3 +261,41 @@ def test_the_build_backend_resolves_this_tree():
         get_requires_for_build_editable({})
     finally:
         os.chdir(previous)
+
+
+def test_the_image_contains_everything_the_suite_reads():
+    """The offline job runs the suite inside a container. It can only run the
+    tests whose inputs were copied in.
+
+    `tests/test_bundle_manifest.py` reads `packaging/`, which the Dockerfile did
+    not copy, so that job failed at collection from the day the test was
+    written. Nobody saw it, because there was no remote for CI to run on. The
+    README meanwhile claimed the whole suite runs with no network interface.
+
+    The tempting fix is to skip the tests whose inputs are missing. That is the
+    worse one: it would make the claim true only of the tests that happened to
+    be copied, which is the empty-result-reads-as-success shape with a green
+    tick on it.
+
+    So the rule asserted is the real one -- every repository path a test reads
+    must exist inside the image -- rather than the fix.
+    """
+    root = Path(__file__).resolve().parents[1]
+
+    copied = set()
+    for line in (root / "Dockerfile").read_text(encoding="utf-8").splitlines():
+        if line.startswith("COPY "):
+            # `COPY a b ./dest` -- everything but the destination is a source.
+            copied.update(line.split()[1:-1])
+
+    referenced = set()
+    for module in sorted((root / "tests").glob("test_*.py")):
+        source = module.read_text(encoding="utf-8")
+        for name in re.findall(r'(?:ROOT|root|parents\[1\])\s*/\s*"([^"/]+)"', source):
+            referenced.add(name)
+
+    missing = sorted(n for n in referenced if n not in copied and (root / n).exists())
+    assert missing == [], (
+        f"the suite reads {missing} but the Dockerfile does not copy them, so "
+        f"the offline job cannot collect those tests"
+    )

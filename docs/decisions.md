@@ -1266,3 +1266,41 @@ doing anything is a shape this project keeps finding.
 pipeline runs every backend gate before bundling. It does, and none of them
 would ever have run, because the job could not get past its install step. The
 gates were real and the path to them was not.
+
+
+## 2026-09-02 — FINDING: the offline job could only ever run part of the suite
+
+With the install fixed, the `test` job went green and `offline` did not. It runs
+the suite inside a container, and the Dockerfile copied `planbrain`, `tools`,
+`tests` and `docs` only. Two test modules read directories that were never
+copied:
+
+* `test_bundle_manifest.py` puts `packaging/` on `sys.path` -- broken in the
+  container since the day it was written
+* `test_dataset_boundary.py` asserts `datasets/` exists, and `.dockerignore`
+  excluded it. **The test that asserts the boundary was excluded by the
+  boundary.**
+
+Plus `test_desktop_shell.py`, added this morning, which reads `desktop/`.
+
+README and `docs/offline.md` both said CI runs *the whole test suite* with no
+network interface. It never has. There was no remote until today, so the job
+had never run at all.
+
+**Rejected: skipping the tests whose inputs are absent.** That makes the claim
+true only of the tests that happened to be copied -- the empty-result-reads-as-
+success shape with a green tick on it. The image now carries them instead;
+`datasets/` is two small scripts and a README, and the large download it fetches
+lives in `data/m5`, which is ignored separately and was never the reason.
+
+**Guard:** `test_the_image_contains_everything_the_suite_reads` cross-reads
+every repository path the suite opens against the Dockerfile's COPY lines. It
+found two more on its first run, one of them inside the guard itself -- the
+Dockerfile, which the guard reads and the image did not contain.
+
+**Third instance today of one failure mode:** correct locally, wrong in the
+environment that matters, invisible to every local test. The `externalBin`
+mismatch, the flat-layout install, and this. The common cause is not
+carelessness in any of the three; it is that this environment has no Rust, no
+Docker run in the loop, and a stale editable install, so the local pass was
+never evidence about the shipping environment.

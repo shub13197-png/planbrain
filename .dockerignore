@@ -1,6 +1,9 @@
 .git
 data/local
 data/m5
-datasets
 **/__pycache__
 .pytest_cache
+desktop/node_modules
+desktop/src-tauri/target
+desktop/src-tauri/binaries
+**/*.egg-info
