@@ -276,11 +276,17 @@ after seeing a result cannot masquerade as one written before it.
 
 ## Gaps, stated plainly
 
-* **Capacity checking detects, it does not yet fix.** Pricing changeover into
-  the lot size cuts capacity load substantially, but 139 of 450 resource-buckets
-  stay overloaded: the plan fits on average and not bucket by bucket. Steering
-  to a per-bucket limit is the CLSP, which is out of scope. **The headline
-  service table assumes unlimited capacity; a capacity-capped range is in
+* **Capacity checking detects and explains; it still does not fix.** Pricing
+  changeover into the lot size cuts capacity load substantially, but buckets
+  stay overloaded: the plan fits on average and not bucket by bucket.
+  `--explain` now attributes every overloaded bucket to the SKUs that loaded it
+  and shows the spare hours nearby — on the demo the worst single SKU accounts
+  for **4%** of the excess, which is the answer: this is a capacity decision,
+  not a scheduling one. It will not choose what to move, because moving
+  production earlier needs the components earlier and capacity planning cannot
+  see whether they are there. Steering to a per-bucket limit is the CLSP and
+  stays out of scope. **The headline service table assumes unlimited capacity;
+  a capacity-capped range is in
   [`docs/service-backtest.md`](docs/service-backtest.md).**
 * **The capacity win costs working capital.** Pricing changeover into the lot
   size trades capacity load against inventory value. Whether that is worth
@@ -291,17 +297,31 @@ after seeing a result cannot masquerade as one written before it.
   see [`docs/reconciliation.md`](docs/reconciliation.md) — but the two engines
   still answer different questions and are not expected to agree.
 * **Single echelon.** The plan answers *what must the plant make* and not *what
-  must each depot hold*. Time-phased distribution (DRP) is deferred, not solved.
-* **No cost model.** Inventory is reported in units, not working capital.
-* **Safety stock is days of cover**, not a solved service-level target.
-* **Unmet demand is modelled as lost, not backordered.** The conservative
-  reading; revisit first if a customer genuinely backorders.
-* **The desktop shell has never been compiled.** The engines are tested to
-  death; the Tauri wrapper around them is not, because no Rust toolchain was
-  available here. The cross-file rules are asserted — the path the shell
-  resolves against the path the bundle installs, the plugins the frontend
-  calls against the crates that provide them — and that is a different thing
-  from a build. The first real run is where this surfaces something.
+  must each depot hold*. Time-phased distribution (DRP) is deferred, not solved,
+  and it is the largest remaining gap on this list.
+* **Distances are straight-line.** Real road distances need a self-hosted OSRM
+  with a local OSM extract, which is infrastructure rather than code, and the
+  offline guarantee rules out a hosted routing API.
+* **Safety stock as a service level is available and is weak.**
+  `--service-level 0.95` implements the textbook form, and then the measurement
+  says nineteen points of requested service move achieved fill by 1.7 — because
+  a cycle service level is not a fill rate and the order-up-to level is
+  dominated by the forecast. Lumpy demand is worst at every level, which is the
+  normal approximation failing on the pattern this product is for. Days of cover
+  stays the default. The whole table is in
+  [`docs/service-backtest.md`](docs/service-backtest.md).
+* **Backorders are available; lost sales stays the default.** With
+  `--unmet backorder` the naive policy serves 58% on time and 99.5% eventually,
+  which is why the headline fill rate remains *on-time* under both rules and the
+  softer number is reported under its own name rather than blended in.
+* **The desktop shell is not compiled in this environment.** The engines are
+  tested to death; the Tauri wrapper is checked only by cross-file rules — the
+  path the shell resolves against the path the bundle installs, the plugins the
+  frontend calls against the crates that provide them. That is a different thing
+  from a build, and CI is the only place it can be settled.
+* **Inventory value uses synthetic costs.** Working capital is now reported
+  alongside units, but the demo's unit costs are generated, so the *ratios*
+  between policies mean something and the absolute figures do not.
 
 ## Scope boundaries — refused, not "not yet"
 
