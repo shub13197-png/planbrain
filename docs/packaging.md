@@ -341,6 +341,46 @@ If it stays near 330 MB the cause is elsewhere and this diagnosis was wrong.
 Either way the number will be recorded here, because a prediction that only gets
 written down when it is right is not a prediction.
 
+### The prediction was wrong
+
+`329.6 MB`, against `329.6 MB` before. Not a reduction within rounding -- the
+same number. The glob was not the cause and the change makes no measurable
+difference; it is kept only because naming a directory once is simpler than
+matching everything inside it twice.
+
+**The first suspect was right, and it was dropped on bad evidence.** WebView2
+was ruled out because a grep of the build log for "webview2" found only Rust
+crate names. Searching the artifact instead of the log:
+
+    $ grep -c MicrosoftEdgeWebView2RuntimeInstaller "Planning Brain_0.1.0_x64_en-US.msi"
+    1
+
+The offline WebView2 runtime installer is inside the MSI, because
+`webviewInstallMode` is set to `offlineInstaller` in `tauri.conf.json` -- a
+choice made in this repository, to keep the promise in `docs/install.md` that
+there is no network access *during install* either.
+
+**Absence in a log is not absence in an artifact.** The log records what a build
+says it did; the artifact is what it produced. Two diagnoses were spent learning
+that, and the second one cost a full build across four platforms.
+
+### What the budget is actually up against
+
 macOS was never in doubt: same backend, 51 MB, because a `.dmg` is a compressed
-disk image of a bundle that was assembled once.
+disk image of a bundle assembled once, and macOS renders with the system
+WKWebView so there is no runtime to carry.
+
+Windows has no system webview it can rely on being present, so the choice is:
+
+| `webviewInstallMode` | installer | what it costs |
+|---|---|---|
+| `offlineInstaller` (current) | ~330 MB | nothing at install time; the promise holds |
+| `embedBootstrapper` | ~150 MB | one network call at install, **only** on a machine without WebView2 |
+| `skip` | ~150 MB | nothing bundled; the app will not start if WebView2 is absent |
+
+**That is a product decision, not an engineering one**, and it is stated here
+rather than made quietly: 180 MB of download for every Windows user against a
+network call that a minority of them would ever make. The user this product
+targets is on a rural connection, which is the same reason the budget exists and
+the same reason the promise exists.
 
