@@ -12,16 +12,14 @@ matches your machine:
 | Windows, where policy blocks MSI installers | `Planning Brain_0.1.0_x64-setup.exe` |
 | Mac with Apple Silicon (M1 and later) | `Planning Brain_0.1.0_aarch64.dmg` |
 | Mac with an Intel processor | `Planning Brain_0.1.0_x64.dmg` |
+| Linux, any distribution | `planning-brain_0.1.0_amd64.AppImage` |
+| Debian or Ubuntu, if you prefer a package | `planning-brain_0.1.0_amd64.deb` |
 
 If you are not sure which Mac you have: **Apple menu → About This Mac**. A line
 reading "Apple M1", "M2", "M3" or similar means Apple Silicon; "Intel" means the
 Intel build.
 
 Every release also carries `SHA256SUMS.txt`. Use it — see below.
-
-There is no installer for Linux yet. It is a straightforward addition (one more
-runner and an `appimage` target) rather than a design problem, and it is absent
-because nobody has needed it, not because anything blocks it.
 
 **The installers are not code-signed yet.** Both Windows and macOS will show a
 warning that sounds serious. This page tells you exactly what you will see and
@@ -104,6 +102,39 @@ Only run that on a file whose checksum you have already compared.
 
 macOS 11 (Big Sur) is the oldest version supported.
 
+## Linux
+
+The **AppImage** is the one to take if you are unsure. It is a single file that
+runs on any distribution without installing anything:
+
+```bash
+chmod +x planning-brain_0.1.0_amd64.AppImage
+./planning-brain_0.1.0_amd64.AppImage
+```
+
+The **`.deb`** installs normally on Debian and Ubuntu:
+
+```bash
+sudo apt install ./planning-brain_0.1.0_amd64.deb
+```
+
+Neither shows a security warning, because Linux has no equivalent of Gatekeeper
+or SmartScreen. That is not a statement that the Linux build is safer — it is the
+same unsigned software. Compare the checksum.
+
+It is built on Ubuntu 22.04 rather than the newest image, deliberately: a binary
+linked against a newer glibc refuses to start on an older distribution, and the
+failure arrives as "not a valid executable" rather than as anything a user can
+act on. If your distribution is older than Ubuntu 22.04 / Debian 12, the
+AppImage may still refuse to start, and that is the reason.
+
+**One dependency is not bundled**: the system WebKit that renders the interface
+(`libwebkit2gtk-4.1`). It is present by default on current desktop
+distributions; on a minimal or server install you may need
+`sudo apt install libwebkit2gtk-4.1-0`. This is the one place the application
+needs something from outside itself, and it is a rendering library, not a
+network one.
+
 ## Apple Silicon and Intel
 
 Both are built, each on its own runner — there is no cross-compilation, because
@@ -150,6 +181,7 @@ every megabyte and gates the total against a committed budget.
 
 **Windows:** Settings → Apps → Planning Brain → Uninstall.
 **macOS:** drag the app to the Trash.
+**Linux:** delete the AppImage, or `sudo apt remove planning-brain`.
 
 Neither removes your planning database — that is deliberate, since deleting
 someone's data because they removed an application is a poor surprise. It lives
@@ -157,6 +189,7 @@ at:
 
 * Windows — `%LOCALAPPDATA%\PlanningBrain\`
 * macOS — `~/Library/Application Support/PlanningBrain/`
+* Linux — `~/.local/share/PlanningBrain/`
 
 Delete that folder to remove everything.
 

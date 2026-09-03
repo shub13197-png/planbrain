@@ -15,6 +15,16 @@ a preference.
     {"id": 1, "ok": true, "result": {...}}
     {"id": 1, "ok": false, "error": {"type": "ValueError", "message": "..."}}
 
+A method may also emit progress lines *before* its response:
+
+    {"id": 2, "progress": true, "stage": "fitting demand models"}
+    {"id": 2, "ok": true, "result": {...}}
+
+They carry the request id and are distinguished by `progress`, never by `ok`,
+so a client that ignores them still sees exactly one response per request. A
+plan run takes the better part of a minute; without these the window is simply
+frozen, and a frozen window is indistinguishable from a crashed one.
+
 Every error is returned as a response rather than raised into the pipe. A
 sidecar that dies on a bad request takes the whole application with it, and the
 frontend cannot tell that from a crash.
@@ -82,7 +92,15 @@ def main(stdin=None, stdout=None) -> int:
         if request.get("method") == "shutdown":
             _write(stdout, {"id": request.get("id"), "ok": True, "result": None})
             break
-        _write(stdout, handle(request, state))
+        # Bound to this request, so a progress line can be attributed to the
+        # call that produced it rather than to whatever is on screen.
+        state.emit = lambda payload, _id=request.get("id"): _write(
+            stdout, {"id": _id, "progress": True, **payload}
+        )
+        try:
+            _write(stdout, handle(request, state))
+        finally:
+            state.emit = None
     return 0
 
 

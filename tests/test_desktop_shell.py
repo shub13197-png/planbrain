@@ -278,6 +278,7 @@ def test_the_install_guide_names_every_platform_the_release_builds():
         "x86_64-pc-windows-msvc": "Windows",
         "aarch64-apple-darwin": "Apple Silicon",
         "x86_64-apple-darwin": "Intel",
+        "x86_64-unknown-linux-gnu": "AppImage",
     }
     for triple in triples:
         assert triple in words, f"no install-guide wording is defined for {triple}"
@@ -293,7 +294,8 @@ def test_no_cross_compilation():
     host = {
         "windows-latest": "pc-windows",
         "macos-latest": "apple-darwin",
-        "macos-13": "apple-darwin",
+        "macos-15-intel": "apple-darwin",
+        "ubuntu-22.04": "linux-gnu",
     }
     for entry in RELEASE["jobs"]["build"]["strategy"]["matrix"]["include"]:
         assert host[entry["os"]] in entry["triple"], (
@@ -311,3 +313,42 @@ def test_the_release_fails_rather_than_publishing_an_empty_release():
     assert all(s["with"].get("if-no-files-found") == "error" for s in upload)
     scripts = "\n".join(s.get("run", "") for s in steps)
     assert "exit 1" in scripts, "nothing fails the job when no installer is produced"
+
+
+def test_the_frontend_calls_only_backend_methods_that_exist():
+    """`call("plan.run")` on a method the backend does not register fails at
+    runtime, in front of the user, with a message about an unknown method.
+
+    Nothing else checks this: the Rust never inspects the string, the backend
+    never sees the frontend, and there is no browser test. The two halves are
+    joined by a quoted name and by nothing else.
+    """
+    from planbrain.backend.api import METHODS
+
+    called = set(re.findall(r'call\(\s*"([^"]+)"', INDEX))
+    assert called, "no backend calls found; this test is not looking where it thinks"
+    unknown = sorted(called - set(METHODS))
+    assert unknown == [], f"the frontend calls methods the backend does not have: {unknown}"
+
+
+def test_the_planning_pane_reaches_the_planner():
+    """The window had the import flow and nothing else -- every plan ran through
+    a terminal, which made the audience "a manufacturer comfortable with a
+    command line". These are the calls that close that gap; if the pane is
+    removed this fails rather than the app quietly reverting to an importer."""
+    called = set(re.findall(r'call\(\s*"([^"]+)"', INDEX))
+    for method in ("demo.build", "scenario.growth", "plan.run"):
+        assert method in called, f"the interface never calls {method}"
+
+
+def test_progress_lines_are_not_mistaken_for_a_response():
+    """A plan run takes the better part of a minute and reports its stage as it
+    goes. Those lines carry a request id, so a client that looked up the waiter
+    first would resolve the promise on the first one and hand the caller a
+    half-finished plan."""
+    progress_at = INDEX.index("if (msg.progress)")
+    waiter_at = INDEX.index("const waiter = pending.get(msg.id)")
+    assert progress_at < waiter_at, (
+        "the progress check must come before the waiter lookup"
+    )
+

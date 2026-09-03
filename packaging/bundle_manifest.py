@@ -34,6 +34,7 @@ the standard library would be hundreds of entries nobody would read.
 import argparse
 import ast
 import collections
+import re
 import sys
 from pathlib import Path
 
@@ -45,7 +46,7 @@ ALLOWED = {
     # --- our own code and the interpreter -----------------------------
     "planbrain-backend": "the sidecar executable itself",
     "planbrain": "our package data: schema.sql and the payload contract",
-    "python314": "CPython runtime",
+    "python": "CPython runtime. Canonical: the file is python314.dll on Windows and libpython3.12.so.1.0 on Linux",
     "base_library.zip": "CPython stdlib archive",
     "unicodedata": "stdlib, str normalisation",
     "_decimal": "stdlib decimal",
@@ -56,15 +57,15 @@ ALLOWED = {
     "_lzma": "stdlib compression",
     "sqlite3": "the datastore -- single file, no service, no port",
     "_sqlite3": "sqlite3's native extension",
-    "libffi-8": "ctypes, required by the interpreter",
+    "libffi": "ctypes, required by the interpreter",
     "_ctypes": "stdlib ctypes",
     "select": "stdlib selectors",
     "_socket": "stdlib socket. Present because the stdlib links it; every "
                "outbound connection through it is blocked by offline.engage()",
-    "_hashlib": "hashing. Not transport -- see libcrypto-3 below",
-    "libcrypto-3": "OpenSSL's PRIMITIVES, linked by _hashlib for hashing. "
-                   "libssl-3 -- the TLS transport layer -- is excluded, which "
-                   "is the part that mattered",
+    "_hashlib": "hashing. Not transport -- see libcrypto below",
+    "libcrypto": "OpenSSL's PRIMITIVES, linked by _hashlib for hashing. "
+                 "libssl -- the TLS transport layer -- is excluded, which "
+                 "is the part that mattered",
     "_queue": "stdlib queue primitives, used by multiprocessing",
     "_multiprocessing": "stdlib; statsforecast may parallelise fitting locally",
     "_asyncio": "stdlib event loop, linked by the interpreter build",
@@ -73,6 +74,25 @@ ALLOWED = {
     "_wmi": "Windows platform module, stdlib",
     "VCRUNTIME140": "MSVC runtime, required by every native extension on Windows",
     "VCRUNTIME140_1": "MSVC runtime, C++ half; required on Windows",
+
+    # --- the same job as VCRUNTIME, on the platforms that are not Windows.
+    # Absent from this list until the first Linux and macOS builds ran, because
+    # the allowlist had only ever seen a Windows bundle. Every one of these is a
+    # compiler or C-library runtime that a native extension links; none of them
+    # is a networking or serialisation library, which is what this gate is for.
+    "libgcc_s": "GCC unwinder and soft-float helpers, linked by every "
+                "compiled extension on Linux",
+    "libstdc++": "C++ standard library; scipy's and pandas' extensions link it",
+    "libgfortran": "Fortran runtime. scipy's LAPACK and BLAS kernels are "
+                   "compiled Fortran, which is the whole reason it is here",
+    "libquadmath": "128-bit float support required by libgfortran",
+    "libz": "zlib. The stdlib zipfile module and openpyxl need it -- an .xlsx "
+            "is a zip archive",
+    "libbz2": "the compression library behind stdlib bz2",
+    "liblzma": "the compression library behind stdlib lzma",
+    "libuuid": "stdlib uuid on Linux",
+    "libcom_err": "Kerberos error tables, pulled in by libuuid's dependency "
+                  "chain on some distributions",
 
     # --- the numerical stack, which is the actual product -------------
     "numpy": "array maths under every engine",
@@ -85,7 +105,6 @@ ALLOWED = {
     "statsforecast": "the forecasting engines: AutoETS, Croston, TSB",
     "coreforecast": "statsforecast's native kernels",
     "utilsforecast": "statsforecast's helpers",
-    "pytz": "timezone data, pulled by pandas",
     "dateutil": "date parsing, pulled by pandas",
     "tqdm": "progress reporting inside statsforecast's fitting loop",
 
@@ -99,14 +118,11 @@ ALLOWED = {
     "six": "Python 2/3 shim, pulled by dateutil",
     "typing_extensions": "backported typing, pulled across the numeric stack",
     "joblib": "statsforecast's local parallelism over model fits",
-    "patsy": "formula parsing, pulled by statsmodels",
     "narwhals": "utilsforecast's dataframe abstraction",
     "packaging": "version comparison, pulled widely",
     "colorama": "tqdm's Windows colour support",
     "cloudpickle": "pulled by statsforecast",
     "threadpoolctl": "caps BLAS threads; without it OpenBLAS grabs every core",
-    "et_xmlfile": "openpyxl's streaming XML writer",
-    "dateutil": "date parsing, pulled by pandas",
     "tzdata": "timezone database",
     "pytz": "timezone data, pulled by pandas",
     "attr": "attrs' legacy import name, pulled by jsonschema",
@@ -141,7 +157,7 @@ FORBIDDEN = {
     "IPython": "notebook display machinery; there is no notebook here",
     "pygments": "syntax highlighting for a REPL the sidecar does not have",
     "traitlets": "IPython's configuration system",
-    "libssl-3": "the OpenSSL TLS TRANSPORT layer, in an app that promises "
+    "libssl": "the OpenSSL TLS TRANSPORT layer, in an app that promises "
                 "nothing leaves the machine. Found by this gate, not by the "
                 "size budget -- see docs/packaging.md",
     "requests": "an HTTP client has no place in the bundle",
@@ -211,6 +227,43 @@ def weigh(root: Path) -> dict:
     return dict(totals)
 
 
+#: Where a shared library's name stops and the platform's noise begins.
+_EXTENSION = re.compile(r"\.(?:so|dylib|dll|pyd)\b")
+#: auditwheel and PyInstaller stamp content hashes into vendored library names:
+#: libgfortran-83c28eba-468e71e5.so.5.0.0
+_HASH = re.compile(r"-[0-9a-f]{8,}")
+#: A trailing soversion, whether written libcrypto-3.dll or libcrypto.so.3.
+_SOVERSION = re.compile(r"[-.]\d+(?:\.\d+)*$")
+#: python314.dll, libpython3.12.so.1.0 -- the same interpreter.
+_INTERPRETER = re.compile(r"(?:lib)?python[\d._]*$", re.IGNORECASE)
+
+
+def canonical(name: str) -> str:
+    """One name for the same library on every platform.
+
+    The allowlist was written from a single Windows build and every entry in it
+    carried Windows spelling -- `libcrypto-3`, `libffi-8`, `python314`. The first
+    Linux and macOS builds therefore reported *every* shared library as new, and
+    two genuinely new packages were buried in twenty lines of noise. A gate that
+    cries wolf on a platform change is a gate that gets skimmed.
+
+    Rejected: a per-platform section in the allowlist. That would let a package
+    be permitted on Linux and forbidden on Windows with nobody seeing the
+    asymmetry, which is the failure this gate exists to prevent, moved one level
+    up.
+
+    Version digits are stripped only after a separator, so `libbz2` and
+    `VCRUNTIME140` keep the digits that are part of their names rather than
+    becoming `libbz` and `VCRUNTIME`.
+    """
+    stem = _EXTENSION.split(name, maxsplit=1)[0]
+    stem = _HASH.sub("", stem)
+    stem = _SOVERSION.sub("", stem)
+    if _INTERPRETER.fullmatch(stem):
+        return "python"
+    return stem
+
+
 def normalise(name: str) -> str:
     """Strip the version and architecture noise off a shipped filename.
 
@@ -220,13 +273,16 @@ def normalise(name: str) -> str:
     """
     if name in ALLOWED:
         return name
+    if name.startswith("lib") and "openblas" in name.lower():
+        return "scipy.libs"
+    reduced = canonical(name)
+    if reduced in ALLOWED:
+        return reduced
     for token in ("-", "."):
         head = name.split(token)[0]
         if head in ALLOWED:
             return head
-    if name.startswith("lib") and "openblas" in name.lower():
-        return "scipy.libs"
-    return name
+    return reduced
 
 
 def audit(root: Path, workpath=None):
@@ -240,7 +296,14 @@ def audit(root: Path, workpath=None):
     weights = weigh(root)
     resolved = {}
     for name, size in weights.items():
-        key = normalise(name) if normalise(name) in ALLOWED else name
+        # Resolve against BOTH lists. Checking only ALLOWED meant a forbidden
+        # library under a non-Windows filename -- libssl.so.3 rather than
+        # libssl-3.dll -- kept its raw name and was reported as merely unknown.
+        # The build still failed, so this was never a silent pass, but the one
+        # finding the gate exists for would have arrived as one more line in a
+        # list of twenty.
+        reduced = normalise(name)
+        key = reduced if (reduced in ALLOWED or reduced in FORBIDDEN) else name
         resolved[key] = resolved.get(key, 0) + size
 
     # Pure-Python packages live in the archive, not on disk. They carry no

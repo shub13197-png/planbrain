@@ -150,7 +150,8 @@ def test_the_pipeline_runs_without_the_excluded_packages():
     leaves this one. This proves the exclusion is safe rather than hopeful."""
     code = (
         "import sys, importlib.abc\n"
-        "BLOCK={'fugue','triad','pyarrow','adagio','sklearn'}\n"
+        "BLOCK={'fugue','triad','pyarrow','adagio','sklearn',"
+    "'formulaic','interface_meta','patsy','readline'}\n"
         "class B(importlib.abc.MetaPathFinder):\n"
         "    def find_spec(self, n, p=None, t=None):\n"
         "        if n.split('.')[0] in BLOCK: raise ImportError(n)\n"
@@ -180,7 +181,11 @@ def test_the_spec_strips_gpu_artefacts():
     the committed budget in one commit."""
     spec = SPEC.read_text(encoding="utf-8")
     assert "def strip_gpu" in spec
-    assert "a.binaries = strip_gpu(a.binaries)" in spec
+    # Wrapped by strip_orphaned once readline was excluded, so the assertion
+    # is that strip_gpu is still in the chain rather than that it is the
+    # whole of it.
+    assert "strip_gpu(a.binaries)" in spec
+    assert spec.count("a.binaries = ") == 1, "the filter chain was duplicated"
     for token in ("cuda", "cublas", "cudnn"):
         assert token in spec
 

@@ -95,7 +95,35 @@ excludes = [
     # first .xlsx anyone opened -- the mapping UI's primary use case.
     "numpy.f2py", "scipy.io.matlab",
     "pandas.tests", "numpy.tests", "scipy.tests", "statsmodels.tests",
+    # statsmodels' formula API -- `y ~ x + z` strings. We never touch it:
+    # AutoETS reaches statsmodels through statsforecast's model classes, not
+    # through a formula. `patsy` was allowlisted for months on the assumption
+    # that statsmodels needed it; blocking all four and running the whole
+    # pipeline showed it does not.
+    "formulaic", "interface_meta", "patsy",
+    # Terminal line editing, in a process whose only input is a JSON-RPC pipe.
+    # The interpreter links it, so PyInstaller collects it along with
+    # libreadline and libtinfo. Proven unnecessary the same way.
+    "readline",
 ]
+
+
+#: Shared libraries whose only consumer was an excluded module. Excluding the
+#: Python module does not always drop the .so PyInstaller collected alongside
+#: it, and an orphaned library is exactly the sort of unexplained entry the
+#: identity gate exists to refuse.
+ORPHANED = ("libreadline", "libtinfo", "libncurses")
+
+
+def strip_orphaned(items):
+    """Drop libraries left behind by an excluded module."""
+    kept = []
+    for entry in items:
+        name = Path(entry[0]).name.lower()
+        if any(name.startswith(token) for token in ORPHANED):
+            continue
+        kept.append(entry)
+    return kept
 
 
 def strip_gpu(items):
@@ -125,7 +153,7 @@ a = Analysis(
     excludes=excludes,
     noarchive=False,
 )
-a.binaries = strip_gpu(a.binaries)
+a.binaries = strip_orphaned(strip_gpu(a.binaries))
 
 pyz = PYZ(a.pure)
 

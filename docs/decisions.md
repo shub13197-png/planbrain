@@ -1358,3 +1358,82 @@ session-scoped planned scenario, not thinner assertions.
 column-mapping flow only -- there is no planning screen to put a field on. The
 backend method `scenario.growth` exists and works; a control that nothing
 reaches would be worse than the honest gap.
+
+
+## 2026-09-03 — The identity gate had only ever seen one platform
+
+The first Linux and macOS builds failed the bundle gate on twenty entries:
+`libgfortran`, `libquadmath`, `libstdc++`, `libz`, `libcrypto.so.3` and the
+rest. Every allowlist key carried Windows spelling -- `libcrypto-3`,
+`libffi-8`, `python314` -- because the list was written from one local Windows
+build and had never been run against anything else.
+
+**Rejected: per-platform sections in the allowlist.** That would let a package
+be permitted on Linux and forbidden on Windows with nobody seeing the
+asymmetry, which is this gate's own failure mode moved one level up.
+
+**Decided: canonical names.** `canonical()` strips the extension chain, the
+auditwheel content hash and a trailing soversion, so `libcrypto-3.dll` and
+`libcrypto.so.3` are one entry. Version digits are stripped only after a
+separator, or `libbz2` becomes `libbz` and `VCRUNTIME140` becomes `VCRUNTIME`
+-- two libraries silently merged into one exemption nobody wrote.
+
+**The worse bug was in FORBIDDEN, not ALLOWED.** `audit()` resolved a name
+against the allowlist only and kept the raw filename otherwise, so
+`libssl.so.3` never reached the forbidden check. The build still failed, so it
+was never a silent pass -- but the one finding this gate exists to produce would
+have arrived as one line among twenty. Now resolved against both lists, and
+tested under all three platform spellings.
+
+**Four packages excluded rather than allowlisted**, each proven unnecessary by
+blocking the import and running the whole pipeline: `formulaic`,
+`interface_meta` and `patsy` (statsmodels' formula API, which we never touch --
+`patsy` had been allowlisted for months on the assumption it was needed), and
+`readline`, which is terminal line editing in a process whose only input is a
+pipe. Excluding a module does not drop the shared library beside it, so
+`strip_orphaned` removes libreadline, libtinfo and libncurses.
+
+**Verified locally before spending CI minutes:** a full Windows build passes
+both gates at 159.9 MB, and the packaged binary answers `ping`, `demo.build`
+and `scenario.growth`. That is the check that would have caught the
+`openpyxl.chart` exclusion the day it was made.
+
+**A third duplicate allowlist key** (`pytz`) was found by the new guard against
+repeated keys in a dict literal -- where the later entry silently wins and the
+earlier reason is discarded.
+
+## 2026-09-03 — Linux installers, and a planning screen
+
+**Linux.** `appimage` and `deb` targets, built on `ubuntu-22.04` rather than the
+newest image: a binary linked against a newer glibc refuses to start on an older
+distribution and the failure reaches the user as "not a valid executable". The
+one thing not bundled is the system WebKit that renders the interface, which is
+documented as the single external dependency and is a rendering library rather
+than a network one.
+
+**Intel macOS moved from `macos-13` to `macos-15-intel`.** The `macos-13` job
+sat unscheduled for over an hour across two runs while its Apple Silicon sibling
+ran and failed honestly. Three jobs got runners; that one never did.
+
+**The window had the import flow and nothing else**, so every plan ran through a
+terminal and the audience was "a manufacturer who is comfortable with a command
+line" -- close to nobody. There is now a Plan tab: load data, set the two growth
+rates, choose the demand source and lot-sizing rule, run, and read the verdict
+with its assumptions beside it.
+
+**The protocol gained progress lines.** A plan run is the better part of a
+minute and the pipe is one request at a time, so without them the window is
+simply frozen, which is indistinguishable from crashed. They carry the request
+id and are distinguished by `progress`, never by `ok`, so a client that ignores
+them still sees exactly one response per request.
+
+**The verdict states what it does not do.** When the plan does not fit, the
+interface says so and then says that it will not choose what to move --
+steering to a per-bucket limit is a different algorithm and is out of scope.
+Naming the lever that exists (capacity growth, horizon, lot sizing) is honest;
+implying the tool will solve it is not.
+
+**Tested by the only rule that spans the halves:** every backend method the
+frontend names must exist in `METHODS`. Nothing else joins them -- the Rust
+never inspects the string and there is no browser test. It caught a real
+mismatch on its first run.

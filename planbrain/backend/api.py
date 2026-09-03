@@ -26,6 +26,15 @@ class Session:
     con: sqlite3.Connection = None
     demo: object = None
     imported: dict = field(default_factory=dict)
+    #: Set by the stdio loop for the duration of one request. None everywhere
+    #: else, so calling progress() from a test or a script is a no-op rather
+    #: than an error.
+    emit: object = None
+
+    def progress(self, stage: str, **detail) -> None:
+        """Tell the interface what is happening, if anyone is listening."""
+        if self.emit is not None:
+            self.emit({"stage": stage, **detail})
 
 
 def session(path: str = ":memory:") -> Session:
@@ -314,10 +323,85 @@ def scenario_growth(state, scenario_id: int = 0, demand_growth_pct: float = None
     }
 
 
+def plan_run(state, source: str = "forecast", lot_sizing: str = "cost_based") -> dict:
+    """Run the whole plan and return what a planner actually looks at.
+
+    forecast -> net requirements -> rough-cut capacity, in that order, because
+    each reads what the previous one wrote. Returns the capacity verdict with
+    the assumptions that produced it, never the verdict alone: a feasibility
+    answer is the number most likely to be repeated out of context.
+
+    This is the long call in the protocol -- the better part of a minute on a
+    200-SKU portfolio -- so it reports progress between stages.
+    """
+    from .. import forecast, netreq, rccp
+    from ..facts.scenario import growth_of
+
+    if state.demo is None:
+        raise ValueError(
+            "no dataset loaded; call demo.build for the worked example, or "
+            "import your own data first"
+        )
+
+    growth = growth_of(state.con, 0)
+
+    state.progress("fitting demand models")
+    fitted = forecast.run(state.con, state.demo)
+
+    state.progress("netting requirements")
+    netreq.run(state.con, state.demo, source=source, lot_sizing=lot_sizing)
+
+    state.progress("checking capacity")
+    capacity = rccp.run(state.con, state.demo)
+
+    names = {r.resource_id: r.name for r in state.demo.resources}
+    load = sum(d["load_hours"] for d in capacity["resources"].values())
+    available = sum(d["capacity_hours"] for d in capacity["resources"].values())
+
+    return {
+        "assumptions": {
+            "demand_growth_pct": growth.demand_pct,
+            "capacity_growth_pct": growth.capacity_pct,
+            "anchor": capacity["growth_anchor"],
+            "source": source,
+            "lot_sizing": lot_sizing,
+        },
+        "forecast": {
+            "series": fitted["series"],
+            "model_mix": fitted["model_mix"],
+            "pattern_mix": fitted["pattern_mix"],
+            "fallbacks": fitted["fallbacks"],
+            "trends_suppressed": fitted["trends_suppressed"],
+        },
+        "capacity": {
+            "feasible": capacity["feasible"],
+            "buckets": capacity["buckets"],
+            "load_hours": round(load, 1),
+            "capacity_hours": round(available, 1),
+            "utilisation": (load / available) if available else None,
+            "overloaded_buckets": sum(
+                len(d["overloaded_buckets"]) for d in capacity["resources"].values()
+            ),
+            "resources": [
+                {
+                    "resource_id": rid,
+                    "name": names.get(rid, rid),
+                    "load_hours": round(d["load_hours"], 1),
+                    "capacity_hours": round(d["capacity_hours"], 1),
+                    "utilisation": d["utilisation"],
+                    "overloaded_buckets": len(d["overloaded_buckets"]),
+                }
+                for rid, d in capacity["resources"].items()
+            ],
+        },
+    }
+
+
 METHODS = {
     "ping": ping,
     "demo.build": demo_build,
     "scenario.growth": scenario_growth,
+    "plan.run": plan_run,
     "import.check": import_check,
     "import.columns": import_columns,
     "mapping.inspect": mapping_inspect,
