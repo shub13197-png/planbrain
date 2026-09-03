@@ -257,3 +257,45 @@ hardware — and 4B at Q4_K_M on CPU is the normal case for this class of machin
 
 Recorded now because it is the kind of constraint that gets discovered after the
 GPU build is already wired in.
+
+## The Linux artifact is not statically linked, and now we know
+
+The first Linux bundle that ever got past the identity gate could not start:
+
+    error while loading shared libraries: libz.so.1
+
+It was running in `gcr.io/distroless/base-debian12`, a container with almost
+nothing in it. PyInstaller's bootloader is an ordinary ELF executable and its
+own `DT_NEEDED` entries resolve from the system at exec time, before anything in
+`_internal` is reachable. So the artifact needs a handful of ordinary system
+libraries, and always did -- on Windows and macOS too, where the equivalents
+ship with the OS and nobody notices.
+
+**The container was testing a claim nobody had made.** The promise is *no
+network*, and `--network=none` is what tests it. The base image is now
+`debian:12-slim`, which resembles a machine somebody might actually own; a base
+image resembling nothing tests the wrong thing convincingly.
+
+**Written into `docs/install.md` rather than left in a workflow comment**,
+because it is a thing a Linux user can hit: on a minimal or server install they
+may need `zlib1g` and `libwebkit2gtk-4.1-0`. "Self-contained" remains true in
+the sense that matters -- no runtime to install, no packages to fetch, no
+network -- and "statically linked" was never true and is not claimed.
+
+## The allowlist was checked on one machine, and one machine is not the matrix
+
+Two rounds of this, on consecutive runs:
+
+* **Round one** was spelling. Twenty entries rejected on Linux and macOS because
+  every allowlist key carried Windows naming. Fixed with `canonical()`.
+* **Round two** was *contents*. The Windows CI build carries `ucrtbase` and
+  thirteen `api-ms-win-*` API-set forwarders. **A local Windows build on Python
+  3.14 does not.** Same operating system, same spec, different interpreter
+  build, fourteen different files.
+
+That second one is the more useful lesson, because the first is the kind of
+mistake you can imagine avoiding and the second is not. The local build that
+passed both gates at 159.9 MB was a real check and it was not the same check CI
+runs. The thirteen forwarders collapse to one allowlist entry -- thirteen lines
+saying the same sentence is thirteen lines nobody reads.
+

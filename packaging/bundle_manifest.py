@@ -74,6 +74,11 @@ ALLOWED = {
     "_wmi": "Windows platform module, stdlib",
     "VCRUNTIME140": "MSVC runtime, required by every native extension on Windows",
     "VCRUNTIME140_1": "MSVC runtime, C++ half; required on Windows",
+    "ucrtbase": "the Universal C Runtime -- the C standard library on Windows. "
+                "Absent from a local 3.14 build and present on CI's 3.12, which "
+                "is why an allowlist checked on one machine is not checked",
+    "api-ms-win": "UCRT API-set forwarder stubs, collapsed to one entry. Thirteen "
+                  "near-identical DLLs that resolve calls into ucrtbase",
 
     # --- the same job as VCRUNTIME, on the platforms that are not Windows.
     # Absent from this list until the first Linux and macOS builds ran, because
@@ -257,6 +262,12 @@ def canonical(name: str) -> str:
     becoming `libbz` and `VCRUNTIME`.
     """
     stem = _EXTENSION.split(name, maxsplit=1)[0]
+    if stem.lower().startswith("api-ms-win"):
+        # Windows API-set forwarders: thirteen near-identical stubs
+        # (api-ms-win-crt-math-l1-1-0 and friends) that are all one thing, the
+        # UCRT redistributable. Thirteen allowlist lines saying the same
+        # sentence is thirteen lines nobody reads.
+        return "api-ms-win"
     stem = _HASH.sub("", stem)
     stem = _SOVERSION.sub("", stem)
     if _INTERPRETER.fullmatch(stem):

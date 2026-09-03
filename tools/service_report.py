@@ -42,6 +42,10 @@ def main(argv=None) -> int:
                         help="cycle service level as a probability, e.g. 0.95. "
                              "Replaces --safety-days. NOT a fill-rate target: "
                              "see docs/service-backtest.md for what it delivers")
+    parser.add_argument("--unmet", default="lost", choices=["lost", "backorder"],
+                        help="what happens to demand that cannot be served. "
+                             "backorder reports an eventual fill rate too, "
+                             "which is the flattering one")
     parser.add_argument("--safety-days", type=float, default=7.0)
     parser.add_argument("--sweep", action="store_true",
                         help="trace the service-vs-inventory frontier across safety levels")
@@ -69,7 +73,7 @@ def main(argv=None) -> int:
         return 0
 
     report = simulate.compare(
-        con, demo, keys=keys, holdout_days=args.holdout,
+        con, demo, keys=keys, holdout_days=args.holdout, unmet=args.unmet,
         **({"safety_service_level": args.service_level} if args.service_level
            else {"safety_days": args.safety_days}),
     )
@@ -118,7 +122,8 @@ def _print_frontier(con, demo, keys, args) -> None:
 def _print(report, args) -> None:
     # ASCII only: this prints to a Windows console under cp1252.
     print(f"Service backtest - {report['evaluated']} of {report['portfolio']} series, "
-          f"{report['holdout_days']}-day holdout, {report['safety_rule']}")
+          f"{report['holdout_days']}-day holdout, {report['safety_rule']}, "
+          f"{report['unmet_rule']} sales")
     print(f"demand mix: " + ", ".join(f"{k} {v}" for k, v in report["pattern_mix"].items()))
     print()
     print(f"{'policy':22s} {'fill rate':>10s} {'avg on-hand':>12s} "
@@ -128,7 +133,9 @@ def _print(report, args) -> None:
         print(f"{LABELS[name]:22s} {_pct(result.fill_rate.value):>10s} "
               f"{_num(result.average_on_hand.value):>12s} "
               f"{value.total:13,.0f} {value.annual_carrying:13,.0f} "
-              f"{result.units_short:12,.0f} {result.fill_rate.n_scored:7d}")
+              f"{result.units_short:12,.0f} {result.fill_rate.n_scored:7d}"
+              + (f"  eventual {_pct(result.eventual_fill_rate.value)}"
+                 if report["unmet_rule"] == "backorder" else ""))
 
     # Units cannot be compared across a portfolio -- a thousand fasteners and a
     # thousand castings are not the same decision -- so the money column is the

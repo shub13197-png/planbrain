@@ -95,6 +95,10 @@ class PolicyResult:
     average_on_hand: ScoredMean
     units_short: float
     by_pattern: dict
+    #: Served at all, however late. Equal to fill_rate under lost sales. Kept
+    #: separate so switching to backorders cannot raise the headline figure
+    #: without anything shipping sooner.
+    eventual_fill_rate: ScoredMean = None
     #: Inventory reported in money as well as units. Units alone cannot be
     #: compared across a portfolio -- a thousand fasteners and a thousand
     #: castings are not the same decision -- and working capital is the term a
@@ -155,6 +159,7 @@ def compare(
     holdout_days: int = 90,
     safety_days: float = 0.0,
     safety_service_level: float = None,
+    unmet: str = "lost",
     delivery_factor: list = None,
 ) -> dict:
     """Replay the holdout window under every policy. Returns a report per policy.
@@ -252,7 +257,7 @@ def compare(
         for name, policy in runs.items():
             outcomes[name][key] = replay(
                 holdout, policy, initial_on_hand=opening, lead_time_days=lead_time,
-                delivery_factor=delivery_factor,
+                delivery_factor=delivery_factor, unmet=unmet,
             )
 
     if unmatched:
@@ -264,6 +269,7 @@ def compare(
     unit_costs = {p.sku_id: p.unit_cost for p in demo.parts}
     return {
         "evaluated": len(patterns),
+        "unmet_rule": unmet,
         "safety_rule": (
             f"{safety_service_level:.0%} cycle service level"
             if safety_service_level is not None
@@ -310,6 +316,7 @@ def _inventory_value(runs, unit_costs) -> InventoryValue:
 
 def _summarise_policy(name, runs, patterns, unit_costs=None) -> PolicyResult:
     fills = {key: outcome.fill_rate for key, outcome in runs.items()}
+    eventual = {key: outcome.eventual_fill_rate for key, outcome in runs.items()}
     stock = {key: outcome.average_on_hand for key, outcome in runs.items()}
     by_pattern = {}
     for key, outcome in runs.items():
@@ -319,6 +326,7 @@ def _summarise_policy(name, runs, patterns, unit_costs=None) -> PolicyResult:
     return PolicyResult(
         policy=name,
         fill_rate=scored_mean(fills),
+        eventual_fill_rate=scored_mean(eventual),
         average_on_hand=scored_mean(stock),
         units_short=sum(o.units_short for o in runs.values()),
         by_pattern={

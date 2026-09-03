@@ -128,12 +128,22 @@ failure arrives as "not a valid executable" rather than as anything a user can
 act on. If your distribution is older than Ubuntu 22.04 / Debian 12, the
 AppImage may still refuse to start, and that is the reason.
 
-**One dependency is not bundled**: the system WebKit that renders the interface
-(`libwebkit2gtk-4.1`). It is present by default on current desktop
-distributions; on a minimal or server install you may need
-`sudo apt install libwebkit2gtk-4.1-0`. This is the one place the application
-needs something from outside itself, and it is a rendering library, not a
-network one.
+**Two things are not bundled**, and both are ordinary system libraries rather
+than anything network-facing:
+
+* the WebKit that renders the interface (`libwebkit2gtk-4.1`), and
+* the C runtime libraries the packaged backend links, `libz` among them.
+
+Both are present by default on any desktop distribution. On a minimal or server
+install you may need `sudo apt install libwebkit2gtk-4.1-0 zlib1g`.
+
+We know about the second because a CI build was run in a container with *nothing*
+in it and would not start: `error while loading shared libraries: libz.so.1`.
+PyInstaller's launcher is an ordinary executable and its own dependencies resolve
+from the system before anything bundled is reachable. So the application is
+self-contained in the sense that matters -- no runtime to install, no packages to
+fetch, no network -- but it is not statically linked, and saying otherwise would
+be a claim nobody had checked.
 
 ## Apple Silicon and Intel
 

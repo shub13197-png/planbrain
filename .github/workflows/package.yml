@@ -66,8 +66,22 @@ jobs:
         run: python packaging/bundle_manifest.py build/dist/planbrain-backend --workpath build/work
 
       - name: Package the artifact into a container with no network
+        # debian:12-slim, not distroless. The first Linux artifact that got
+        # this far could not start under distroless at all:
+        #
+        #   error while loading shared libraries: libz.so.1
+        #
+        # PyInstaller's bootloader is an ordinary ELF executable and its own
+        # DT_NEEDED entries resolve from the system at exec time, before any
+        # bundled library is reachable. The artifact needs a handful of
+        # ordinary system libraries and always did -- distroless was testing
+        # a claim nobody had made.
+        #
+        # The claim being tested here is "needs nothing from the NETWORK",
+        # and --network=none below is what tests it. A base image resembling
+        # a real Linux desktop tests that better than one resembling nothing.
         run: |
-          printf 'FROM gcr.io/distroless/base-debian12\nCOPY dist /app\n' \
+          printf 'FROM debian:12-slim\nCOPY dist /app\n' \
             > build/Dockerfile.artifact
           docker build -f build/Dockerfile.artifact -t planbrain-sidecar build
 

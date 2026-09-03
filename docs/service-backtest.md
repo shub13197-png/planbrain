@@ -306,3 +306,42 @@ rather than assumed from a distribution. That is real work and is not done.
 Until it is, `--safety-days` stays the default, because a planner reading
 "7 days of cover" is not being told a probability that does not hold.
 
+## Backorders, and the number that would have flattered everything
+
+`--unmet backorder` keeps demand that could not be served and fills it when
+stock arrives, instead of losing the sale. It is the right model for an OEM on a
+supply contract and the wrong one for a retail counter, so lost sales stays the
+default.
+
+**The reporting was the risk, not the arithmetic.** Under backordering a late
+delivery still counts as served, so a single "fill rate" would rise the moment
+the flag was set, with nothing shipping any sooner. So `fill_rate` means
+**served in the bucket it was demanded in** under both rules, and the softer
+figure is reported beside it under its own name.
+
+Sixteen series, 7 days of cover, the same shipments read two ways:
+
+| policy | on-time fill | eventual fill |
+|---|---|---|
+| fitted forecast | 95.5% | 100.0% |
+| tuned reorder point | 94.0% | 100.0% |
+| stale reorder point | 92.8% | 100.0% |
+| **naive zero forecast** | **58.0%** | **99.5%** |
+
+The last row is the argument. A policy that serves 58% of demand on the day it
+is asked for reports 99.5% under the eventual measure -- a **41-point**
+difference produced entirely by which question is being answered. Anyone
+comparing a backordered run against a lost-sales one on a single "fill rate"
+column would conclude the naive forecast had become competitive.
+
+It has not. It is late on 42% of demand and the eventual column says only that
+the customer eventually got it, which is a different promise and a much cheaper
+one to keep.
+
+**Two further consequences worth stating.** The policy is shown *net* stock
+under backordering -- on-hand minus what is owed -- because a policy shown gross
+would decide it has enough while owing a fortnight of demand and would never
+catch up. And a permanent backlog still reports zero service: eventual fill is
+not a promise that anything ever arrives, which is why `average_backlog` and
+`backlog_buckets` are reported at all.
+

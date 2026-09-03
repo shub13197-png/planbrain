@@ -1493,3 +1493,62 @@ fill instead of assumed from a distribution.
 
 **One pin, not twenty.** The four rows move together and each costs a full
 portfolio replay, so the register pins the 95% row and recomputes it.
+
+
+## 2026-09-03 — Backorders, and the number that would have flattered everything
+
+`--unmet backorder` keeps unserved demand and fills it when stock arrives. Right
+for an OEM on a supply contract, wrong for a retail counter, so lost sales stays
+the default.
+
+**The risk was the reporting, not the arithmetic.** A single "fill rate" would
+have risen across the board the moment the flag was set, with nothing shipping
+sooner. So `fill_rate` means *served in the bucket it was demanded in* under both
+rules, and `eventual_fill_rate` sits beside it under its own name.
+
+The measurement that justifies the split, on sixteen series: the naive-zero
+policy serves **58.0% on time and 99.5% eventually** -- a 41-point difference
+produced entirely by which question is asked. Anyone comparing a backordered run
+against a lost-sales one on one column would conclude the naive forecast had
+become competitive. It is late on 42% of demand.
+
+**The policy is shown net stock**, on-hand minus what is owed. Shown gross it
+would decide it has enough while owing a fortnight of demand and would never
+catch up.
+
+**Owed demand is served before today's.** Anything else leaves the oldest
+customer waiting longest, which is neither what happens nor anything anyone
+would defend.
+
+## 2026-09-03 — The allowlist was checked on one machine, and one is not the matrix
+
+Round two of the cross-platform gate, and the more useful half.
+
+The Windows CI build carries `ucrtbase` and thirteen `api-ms-win-*` API-set
+forwarders. **A local Windows build on Python 3.14 does not.** Same OS, same
+spec, different interpreter build, fourteen different files. The local build that
+passed both gates at 159.9 MB was a real check, and it was not the check CI runs.
+
+The forwarders collapse to one allowlist entry: thirteen lines saying the same
+sentence is thirteen lines nobody reads.
+
+## 2026-09-03 — FINDING: the Linux artifact is not statically linked
+
+The first Linux bundle to get past the identity gate could not start:
+`error while loading shared libraries: libz.so.1`, in
+`gcr.io/distroless/base-debian12`.
+
+PyInstaller's bootloader is an ordinary ELF executable whose own `DT_NEEDED`
+entries resolve from the system at exec time, before anything in `_internal` is
+reachable. The artifact needs ordinary system libraries and always did -- on
+Windows and macOS too, where they ship with the OS and nobody notices.
+
+**Decided: `debian:12-slim` as the base.** The claim under test is *no network*,
+and `--network=none` is what tests it. Distroless was testing a claim nobody had
+made, and testing the wrong thing convincingly is worse than not testing it.
+
+**Recorded in `docs/install.md`, not just in a workflow comment**, because a
+Linux user on a minimal install can hit it and needs to be told `zlib1g` and
+`libwebkit2gtk-4.1-0`. "Self-contained" stays true in the sense that matters --
+no runtime, no packages, no network. "Statically linked" was never true and is
+not claimed.
