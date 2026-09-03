@@ -103,10 +103,17 @@ hand-written profile never appears and the user has nothing to debug from.
 **Written before any model result exists**, so that the conclusion cannot be
 rationalised after seeing one.
 
-Measured on the 45-case corpus, the dumb normalised-equality matcher scores
-**69.0% accuracy on the holdout with 9.1% false confidence — and zero wrong
+Measured on the 45-case corpus, the normalised-equality matcher scores
+**75.0% accuracy on the holdout with 9.1% false confidence — and zero wrong
 columns.** On 84 decisions it never once pointed at the wrong column; it simply
-had no answer 25 times.
+had no answer 20 times.
+
+It scored 69.0% before its alias table learned the transliterated and
+abbreviated forms the corpus actually contains — `dinank`, `tarikh`, `thethi`,
+`ITEM_CD`, `TXN_DT`. That change gained 17.7 points on dev and **6.0 on the
+holdout**, and the second figure is the one that counts: the aliases were
+written by reading the dev misses, so dev measures how well a list covers the
+cases it was copied from. See `docs/mapping-bakeoff.md`.
 
 That is a genuinely strong incumbent, and specifically strong in the dimension
 that matters. **Its failure mode is silence, not error.** A blank dropdown makes

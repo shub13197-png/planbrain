@@ -1605,3 +1605,56 @@ distributions.
 previous could not have: spelling, then contents, then the build environment
 itself. Windows now passes the package workflow end to end -- the first platform
 to do so.
+
+
+## 2026-09-03 — The mapping baseline got better, so the model's bar went up
+
+The alias table learned what the corpus actually contains: transliterated forms
+(`dinank`, `tarikh`, `thethi`, `maal`, `matra`, `alavu`, `kidangu`) and two
+suffix rules -- drop a trailing identifier token so `ITEM_CD` offers `item`, and
+expand a trailing abbreviation so `TXN_DT` offers `txn_date`.
+
+| | before | after | gain |
+|---|---|---|---|
+| dev | 74.0% | 91.7% | +17.7 |
+| **holdout** | **69.0%** | **75.0%** | **+6.0** |
+
+**The dev gain is not the result.** Those aliases were written by reading the
+dev misses, so dev measures how well a list covers the cases it was copied from.
+The holdout gain is a third of it. Both are asserted together in one test so
+neither can be quoted alone.
+
+**Rejected: a stemmer.** It would map `dated` and `dating` onto `date` and would
+eventually map something onto the wrong field with no line anyone could point
+at. Two listable rules, and the corpus says which files need them.
+
+**Rejected: `Item Name` to sku_id.** It is the right answer in the Tally case
+and the wrong one for the `parts` table, where `name` is a real column and
+`sku_id` is declared first -- so the alias would silently steal it. Left as a
+miss rather than fixed with a conditional nobody could reason about.
+
+**The bake-off bar moved from 79.0% to 85.0%, against us.** Threshold 1 is
+written as *baseline + 10 points*, so a stronger incumbent raises the bar the
+model must clear. The rule did not change; the incumbent did. Recorded because
+moving a target after the fact is what a reader should be suspicious of, and the
+direction is the tell -- this makes the model's case harder, not easier. A test
+recomputes the bar from the baseline so it cannot quietly fail to follow.
+
+**Unchanged, and this is why the widening was allowed at all:** zero wrong
+columns on the holdout, false confidence still 9.1%. Every point came from
+converting silence into correct answers.
+
+**The pin failed, deliberately.** `test_the_baseline_scores_are_reproducible`
+broke the moment the mapper improved -- which is precisely when a published
+figure goes stale unremarked -- and moving it cost an explicit edit.
+
+## 2026-09-03 — The package workflow is green on every platform
+
+Four jobs, four platforms: Linux offline-artifact in a container with no network
+interface, Windows, macOS ARM and macOS Intel. First time any of them have all
+passed together, after three rounds of cross-platform findings -- spelling, then
+contents, then the build environment.
+
+The backend halves of the installers are now verified everywhere they ship. The
+Tauri compile remains unverified: there is no Rust toolchain in this
+environment, and `release.yml` is what will settle it.

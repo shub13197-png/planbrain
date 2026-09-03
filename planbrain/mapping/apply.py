@@ -55,6 +55,40 @@ def required_fields(table: str) -> list:
     return required
 
 
+#: Trailing tokens that say "this is an identifier" and carry no meaning of
+#: their own: ITEM_CD is the item, MATERIAL NO (TEXT) is the material. Stripped
+#: only from the END, because a leading one changes the meaning -- `code_date`
+#: is not `date`.
+_NOISE_SUFFIXES = frozenset({"cd", "code", "no", "num", "number", "id", "text"})
+
+#: Abbreviations that stand for a whole word rather than decorating one.
+_SUFFIX_WORDS = {"dt": "date", "qty": "qty", "amt": "amount"}
+
+
+def _expansions(tokens) -> list:
+    """Alternative spellings of one header tail.
+
+    Two moves, both conservative and both reversible by eye:
+
+    * drop a trailing identifier suffix, so `ITEM_CD` also offers `item`
+    * expand a trailing abbreviation, so `TXN_DT` also offers `txn_date`
+
+    Deliberately not a stemmer. A stemmer would map `dated` and `dating` onto
+    `date` and would eventually map something onto the wrong field with no line
+    of code anyone could point at. These two rules are listable, and the corpus
+    says which files need them.
+    """
+    if not tokens:
+        return []
+    out = []
+    last = tokens[-1]
+    if len(tokens) > 1 and last in _NOISE_SUFFIXES:
+        out.append("_".join(tokens[:-1]))
+    if last in _SUFFIX_WORDS:
+        out.append("_".join(tokens[:-1] + [_SUFFIX_WORDS[last]]))
+    return [o for o in out if o]
+
+
 def suggest(headers, table: str) -> dict:
     """Exact and near-exact header matches. **Deliberately not clever.**
 
@@ -72,13 +106,28 @@ def suggest(headers, table: str) -> dict:
     aliases = {
         "sku_id": ("sku", "item_code", "item", "material", "material_no",
                    "material_number", "part", "part_no", "part_number",
-                   "product_code", "article", "item_no"),
+                   "product_code", "article", "item_no",
+                   # Abbreviated and transliterated forms, from the corpus.
+                   # `maal` is Hindi for goods and is what a Tally file in a
+                   # north Indian workshop actually says.
+                   "mtrl", "prod", "maal", "itm"),
         "loc_id": ("location", "loc", "depot", "warehouse", "godown", "plant",
-                   "site", "branch", "store", "store_id"),
+                   "site", "branch", "store", "store_id",
+                   # `whse` is the no-vowel abbreviation; `kidangu` is Tamil for
+                   # warehouse and `naam`-suffixed forms come through the tail
+                   # matching already in place.
+                   "whse", "wh", "kidangu", "stores"),
         "bucket_date": ("date", "day", "posting_date", "doc_date", "txn_date",
-                        "transaction_date", "period"),
+                        "transaction_date", "period",
+                        # `dinank` Hindi, `tarikh` Hindi/Urdu, `thethi` Tamil.
+                        # All three appear on real ledgers and none of them
+                        # resembles the English word at all, which is the whole
+                        # reason a normalised-equality matcher cannot find them.
+                        "dt", "dinank", "tarikh", "thethi", "txn_dt", "trn_dt"),
         "qty": ("quantity", "qty", "units", "volume", "sales", "demand",
-                "issued", "consumed", "quantity_sold"),
+                "issued", "consumed", "quantity_sold",
+                # `matra` Hindi, `alavu` Tamil.
+                "qt", "matra", "alavu", "nos"),
         "unit_cost": ("cost", "rate", "price", "unit_price", "std_cost",
                       "standard_cost", "value"),
         "lead_time_days": ("lead_time", "leadtime", "lt_days", "lead_days"),
@@ -98,6 +147,13 @@ def suggest(headers, table: str) -> dict:
             key = "_".join(tokens[start:])
             if key and key not in candidates:
                 candidates[key] = (header, len(tokens) - start)
+            for expanded in _expansions(tokens[start:]):
+                # Registered at a LOWER specificity than the literal tail, so an
+                # exact header always beats an expansion of a different one. An
+                # expansion that outranked a real match would be the matcher
+                # preferring its own cleverness to what the file says.
+                if expanded not in candidates:
+                    candidates[expanded] = (header, len(tokens) - start - 1)
 
     mapping, claimed = {}, set()
     for canonical in SCHEMAS[table]["columns"]:

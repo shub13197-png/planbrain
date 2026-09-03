@@ -104,14 +104,44 @@ full corpus:
 
 | | dev (24 cases) | **holdout (21 cases)** |
 |---|---|---|
-| accuracy | 74.0% (71/96) | **69.0% (58/84)** |
-| hit rate | 75.0% | 65.8% |
+| accuracy | 91.7% (88/96) | **75.0% (63/84)** |
+| hit rate | 95.2% | 72.6% |
 | refusal correctness | 66.7% | 90.9% |
 | **false confidence** | 33.3% (4/12) | **9.1% (1/11)** |
+| wrong column | 1 | **0** |
 | latency p95 | 0.2 ms | 0.1 ms |
 
-**So the bar a model must clear is 79.0% accuracy on the holdout**, at no more
+**So the bar a model must clear is 85.0% accuracy on the holdout**, at no more
 than 15% false confidence.
+
+**That bar moved up, and it moved up against us.** It was 79.0% when the
+baseline scored 69.0%. Threshold 1 is written as *baseline + 10 points*, so
+improving the incumbent raises the bar the model has to clear -- the rule did
+not change, the incumbent did. Recording it here because raising a target after
+the fact is exactly what a reader should be suspicious of, and the direction is
+the tell: this makes the model's case harder to argue, not easier.
+
+**The improvement, and the honest size of it.** The alias table gained
+transliterated forms (`dinank`, `tarikh`, `thethi`, `maal`, `matra`, `alavu`,
+`kidangu`) and two suffix rules: drop a trailing identifier token so `ITEM_CD`
+offers `item`, and expand a trailing abbreviation so `TXN_DT` offers
+`txn_date`.
+
+| | before | after | gain |
+|---|---|---|---|
+| dev | 74.0% | 91.7% | **+17.7** |
+| holdout | 69.0% | 75.0% | **+6.0** |
+
+**The dev number is the one that flatters, and it is not the result.** Those
+aliases were written by reading the dev misses, so dev measures how well a list
+covers the cases it was copied from. The holdout gain is a third of it, and the
+holdout gain is the one to quote. Both are asserted together in
+`tests/test_mapping_corpus.py` so neither can be cited alone.
+
+**What did not move is the part that mattered:** still zero wrong columns on the
+holdout, and false confidence unchanged at 9.1%. The gain came entirely from
+converting silence into correct answers, which is the only kind of gain this
+matcher is allowed to make.
 
 Two things worth saying about that baseline before any model is compared to it.
 
