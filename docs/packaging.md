@@ -299,3 +299,48 @@ passed both gates at 159.9 MB was a real check and it was not the same check CI
 runs. The thirteen forwarders collapse to one allowlist entry -- thirteen lines
 saying the same sentence is thirteen lines nobody reads.
 
+## The installer budget had nothing measuring it
+
+The first installers ever produced:
+
+| file | size | budget |
+|---|---|---|
+| `Planning Brain_0.1.0_x64_en-US.msi` | **330 MB** | 150 MB |
+| `Planning Brain_0.1.0_x64-setup.exe` | **310 MB** | 150 MB |
+| `Planning Brain_0.1.0_aarch64.dmg` | 51 MB | 150 MB |
+| `Planning Brain_0.1.0_x64.dmg` | 57 MB | 150 MB |
+
+**Nothing failed.** `check_size.py` measures the *backend directory*, which is
+one input to an installer. The 150 MB installer budget, committed in this
+document before the first build, had nothing measuring it -- the same shape as
+the size budget that passed with 83 MB of pyarrow inside it, and the same shape
+as a forbidden list that could not fire.
+
+`packaging/check_installer_size.py` now runs in the release workflow and fails
+the build. It reports 2.2x and 2.1x over, which is the honest state.
+
+### The diagnosis, and the prediction made before testing it
+
+The Windows backend is **162 MB across 936 files**. The MSI is 330 MB -- larger
+than its own uncompressed input, and two independent bundlers (WiX and NSIS)
+both landed near 2x. Compression does not make things bigger. Something is
+included twice.
+
+The build log shows **no WebView2 offline installer being fetched**, which was
+the first suspect and is wrong.
+
+The remaining suspect is the resource glob. `binaries/planbrain-backend/**/*`
+matches directory entries *and* the files inside them, so a bundler that copies
+a matched directory recursively and then also copies each matched file inside it
+writes everything twice. It is now `binaries/planbrain-backend` -- the directory
+itself, once.
+
+**Prediction, recorded before the rebuild that tests it:** if the glob is the
+cause, the MSI falls from 330 MB to roughly 165-200 MB and comes inside budget.
+If it stays near 330 MB the cause is elsewhere and this diagnosis was wrong.
+Either way the number will be recorded here, because a prediction that only gets
+written down when it is right is not a prediction.
+
+macOS was never in doubt: same backend, 51 MB, because a `.dmg` is a compressed
+disk image of a bundle that was assembled once.
+

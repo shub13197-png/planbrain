@@ -41,7 +41,7 @@
     "shortDescription": "Supply chain planning that runs entirely offline",
     "longDescription": "A supply chain planning layer for small manufacturers. Forecasts demand, plans material requirements, checks capacity and balances long-haul work across a fleet. Runs entirely on this machine: no account, no network access, no telemetry.",
     "resources": [
-      "binaries/planbrain-backend/**/*"
+      "binaries/planbrain-backend"
     ],
     "windows": {
       "webviewInstallMode": {

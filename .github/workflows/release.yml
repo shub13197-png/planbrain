@@ -130,6 +130,14 @@ jobs:
           done
           cat SHA256SUMS.txt
 
+      - name: Installers against the committed budget
+        # This gate did not exist until the first installers were produced, and
+        # the first Windows MSI came out at 330 MB against a 150 MB budget with
+        # nothing failing. check_size.py measured the backend directory, which
+        # is one input to an installer; the installer budget had nothing
+        # measuring it at all.
+        run: python packaging/check_installer_size.py dist
+
       - uses: actions/upload-artifact@v4
         with:
           name: planbrain-${{ matrix.triple }}
