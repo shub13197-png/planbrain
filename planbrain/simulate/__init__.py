@@ -17,6 +17,8 @@ that settles it, and the number a finance manager will actually read.
 from dataclasses import dataclass
 
 from ..forecast import classify, make_forecaster
+from statistics import NormalDist
+
 from ..facts.access import read_facts
 from ..forecast.metrics import ScoredMean, scored_mean
 from .core import Outcome, replay
@@ -25,6 +27,7 @@ from .policies import (
     forecast_order_up_to,
     naive_zero_order_up_to,
     reorder_point,
+    safety_stock_for_service,
 )
 
 TABLE = "fact_supply_demand"
@@ -52,6 +55,33 @@ __all__ = [
 
 
 @dataclass(frozen=True)
+class InventoryValue:
+    """What a policy's inventory is worth, and what holding it costs per year.
+
+    A **total**, not a mean, so it scales with how many series were evaluated --
+    which is why ``series`` travels with it and why there is no ``__float__``.
+    Quoting working capital without saying how much of the portfolio it covers
+    is the same mistake as quoting a fill rate without its denominator.
+
+    ``unpriced`` is the count of series whose part carries no unit cost. Those
+    contribute nothing to the total, so a portfolio that is half unpriced
+    reports half the working capital and looks better than it is -- an absent
+    price must not read as a free part.
+    """
+
+    total: float
+    annual_carrying: float
+    carrying_rate: float
+    series: int
+    unpriced: int
+
+    @property
+    def complete(self) -> bool:
+        """Every evaluated series had a price."""
+        return self.unpriced == 0
+
+
+@dataclass(frozen=True)
 class PolicyResult:
     """One policy's outcome across a set of series, grouped by demand pattern.
 
@@ -65,6 +95,11 @@ class PolicyResult:
     average_on_hand: ScoredMean
     units_short: float
     by_pattern: dict
+    #: Inventory reported in money as well as units. Units alone cannot be
+    #: compared across a portfolio -- a thousand fasteners and a thousand
+    #: castings are not the same decision -- and working capital is the term a
+    #: planner is actually answerable for.
+    inventory_value: InventoryValue = None
 
 
 def capacity_factor(con, demo, *, scenario_id: int = 0, holdout_days: int = 90) -> list:
@@ -119,6 +154,7 @@ def compare(
     keys=None,
     holdout_days: int = 90,
     safety_days: float = 0.0,
+    safety_service_level: float = None,
     delivery_factor: list = None,
 ) -> dict:
     """Replay the holdout window under every policy. Returns a report per policy.
@@ -139,6 +175,23 @@ def compare(
     )
     season_length = demo.calendar.seasonal_period
     by_sku = {p.sku_id: p for p in demo.parts}
+
+    if safety_service_level is not None and safety_days:
+        # Two rules for one number. Silently preferring either would make the
+        # reported safety stock depend on an argument order nobody can see.
+        raise ValueError(
+            "pass safety_days or safety_service_level, not both: they are two "
+            "different rules for the same quantity"
+        )
+    # The reorder point takes a multiplier on sigma rather than an absolute
+    # quantity, so a service level reaches it as z. Both policies then answer to
+    # one rule instead of one following the service level and the other quietly
+    # staying at 1.0.
+    safety_factor = (
+        NormalDist().inv_cdf(safety_service_level)
+        if safety_service_level is not None
+        else 1.0
+    )
 
     outcomes = {policy: {} for policy in POLICIES}
     patterns = {}
@@ -164,7 +217,11 @@ def compare(
         mean, sd = demand_statistics(train)
         stale_window = train[: max(1, int(len(train) * STALE_FIT_FRACTION))]
         stale_mean, stale_sd = demand_statistics(stale_window)
-        safety = mean * safety_days
+        safety = (
+            safety_stock_for_service(sd, lead_time_days=lead_time, service_level=safety_service_level)
+            if safety_service_level is not None
+            else mean * safety_days
+        )
         # Start every policy from the same position, or the comparison measures
         # the opening stock rather than the policy.
         opening = mean * (lead_time + 1)
@@ -181,7 +238,7 @@ def compare(
             ),
             "reorder_point": reorder_point(
                 mean_demand=mean, lead_time_days=lead_time, demand_sd=sd,
-                safety_factor=1.0, order_quantity=lot or None,
+                safety_factor=safety_factor, order_quantity=lot or None,
             ),
             # Same rule, parameters frozen from the first third of history and
             # never revisited. A SKU launched after that window has a mean of
@@ -189,7 +246,7 @@ def compare(
             # in the field, and why it belongs in the comparison.
             "reorder_point_stale": reorder_point(
                 mean_demand=stale_mean, lead_time_days=lead_time, demand_sd=stale_sd,
-                safety_factor=1.0, order_quantity=lot or None,
+                safety_factor=safety_factor, order_quantity=lot or None,
             ),
         }
         for name, policy in runs.items():
@@ -204,20 +261,54 @@ def compare(
             f"{unmatched[:3]}; the reference data and the facts disagree"
         )
 
+    unit_costs = {p.sku_id: p.unit_cost for p in demo.parts}
     return {
         "evaluated": len(patterns),
+        "safety_rule": (
+            f"{safety_service_level:.0%} cycle service level"
+            if safety_service_level is not None
+            else f"{safety_days:g} days of cover"
+        ),
         "portfolio": len(all_keys),
         "holdout_days": holdout_days,
         "capacity_constrained": delivery_factor is not None,
         "pattern_mix": _tally(patterns.values()),
         "policies": {
-            name: _summarise_policy(name, runs, patterns)
+            name: _summarise_policy(name, runs, patterns, unit_costs)
             for name, runs in outcomes.items()
         },
     }
 
 
-def _summarise_policy(name, runs, patterns) -> PolicyResult:
+def _inventory_value(runs, unit_costs) -> InventoryValue:
+    """Working capital tied up by a policy, and the annual cost of holding it.
+
+    Uses the same annual carrying rate as cost-based lot sizing
+    (``planbrain.netreq.explode.ANNUAL_CARRYING_RATE``), deliberately: two
+    numbers in one product describing the cost of holding stock must not
+    disagree, and the rate is a committed business assumption rather than
+    something fitted here.
+    """
+    from ..netreq.explode import ANNUAL_CARRYING_RATE
+
+    total = 0.0
+    unpriced = 0
+    for (sku_id, _loc_id), outcome in runs.items():
+        cost = unit_costs.get(sku_id)
+        if not cost:
+            unpriced += 1
+            continue
+        total += outcome.average_on_hand * cost
+    return InventoryValue(
+        total=total,
+        annual_carrying=total * ANNUAL_CARRYING_RATE,
+        carrying_rate=ANNUAL_CARRYING_RATE,
+        series=len(runs),
+        unpriced=unpriced,
+    )
+
+
+def _summarise_policy(name, runs, patterns, unit_costs=None) -> PolicyResult:
     fills = {key: outcome.fill_rate for key, outcome in runs.items()}
     stock = {key: outcome.average_on_hand for key, outcome in runs.items()}
     by_pattern = {}
@@ -237,6 +328,7 @@ def _summarise_policy(name, runs, patterns) -> PolicyResult:
             }
             for pattern, v in sorted(by_pattern.items())
         },
+        inventory_value=_inventory_value(runs, unit_costs or {}),
     )
 
 

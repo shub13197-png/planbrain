@@ -62,6 +62,15 @@ FIGURES = (
     Figure("trends_suppressed", 21, "**21 of 103 already carry a fitted trend.**",
            (FORECAST,), note="AutoETS series that select a trend term"),
 
+    # --- what a requested service level actually delivers ---------------
+    # The claim is the GAP: ask for 95% cycle service and the portfolio fills
+    # 97%, because a cycle service level is not a fill rate. One pin is enough
+    # -- the four rows of that table move together, and each costs a full
+    # portfolio replay.
+    Figure("service_level_95_fill", 0.970, "| 95% | **97.0%**", (SERVICE,),
+           tolerance=0.004,
+           note="fill rate achieved when 95% cycle service is requested"),
+
     # --- service, full portfolio, seed 7 --------------------------------
     Figure("fitted_fill", 0.972, "**97.2%**", (README,), tolerance=0.002),
     Figure("tuned_fill", 0.957, "95.7%", (README,), tolerance=0.002),

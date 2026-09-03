@@ -23,6 +23,7 @@ arrives after the lead time, so today's decision has to cover demand until the
 """
 
 import math
+from statistics import NormalDist
 
 
 def _cover(forecast: list, start: int, length: int) -> float:
@@ -108,3 +109,37 @@ def demand_statistics(history: list):
     mean = sum(history) / len(history)
     variance = sum((v - mean) ** 2 for v in history) / len(history)
     return mean, math.sqrt(variance)
+
+
+def safety_stock_for_service(demand_sd: float, *, lead_time_days: int,
+                             service_level: float, review_every: int = 1) -> float:
+    """Safety stock for a cycle service level, the textbook periodic-review form.
+
+        SS = z(alpha) * sigma * sqrt(L + R)
+
+    where sigma is the per-bucket demand standard deviation, L the lead time and
+    R the review period. Source: Silver, Pyke & Peterson, *Inventory Management
+    and Production Planning and Scheduling*, 3rd ed., ch. 7.
+
+    z comes from `statistics.NormalDist` rather than scipy: it is the stdlib, it
+    is exact, and it keeps a one-line formula from adding a dependency to the
+    bundle.
+
+    **This assumes demand over the lead time is normally distributed, and for
+    much of a real portfolio it is not.** Intermittent and lumpy series are
+    mostly zeros with occasional spikes; the normal approximation understates
+    the tail that actually causes stockouts, so the achieved service level comes
+    in below the requested one. That is measured per demand pattern in
+    `docs/service-backtest.md` rather than left as a caveat -- the number the
+    rule delivers is more useful than the number it asks for.
+
+    A service level of 0.5 gives z = 0 and no safety stock, which is correct and
+    is what "I will be short half the time" means.
+    """
+    if not 0.0 < service_level < 1.0:
+        raise ValueError(
+            f"service level must be a probability strictly between 0 and 1, "
+            f"got {service_level!r}. 1.0 would demand infinite stock"
+        )
+    z = NormalDist().inv_cdf(service_level)
+    return max(0.0, z * demand_sd * math.sqrt(lead_time_days + review_every))

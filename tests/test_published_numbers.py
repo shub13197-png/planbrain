@@ -190,6 +190,12 @@ def test_every_published_figure_still_matches_a_fresh_run(pipeline):
         # number nothing recomputes, which is the failure this register exists
         # for.
         "trends_suppressed": _suppressed_with_growth(demo),
+        # A second full replay, at a service level rather than days of cover.
+        # Expensive, and the alternative is a published table nothing
+        # recomputes -- which is the failure this register exists for.
+        "service_level_95_fill": simulate.compare(
+            con, demo, keys=demand_keys(demo), safety_service_level=0.95
+        )["policies"]["forecast"].fill_rate.value,
         "fitted_fill": policies["forecast"].fill_rate.value,
         "tuned_fill": policies["reorder_point"].fill_rate.value,
         "stale_fill": policies["reorder_point_stale"].fill_rate.value,

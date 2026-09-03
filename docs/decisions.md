@@ -1437,3 +1437,59 @@ implying the tool will solve it is not.
 frontend names must exist in `METHODS`. Nothing else joins them -- the Rust
 never inspects the string and there is no browser test. It caught a real
 mismatch on its first run.
+
+
+## 2026-09-03 — Inventory in money, and a service level that does not mean what it says
+
+**Working capital.** `simulate.compare` now reports what each policy's stock is
+worth and what holding it costs per year, using the same `ANNUAL_CARRYING_RATE`
+that cost-based lot sizing prices changeover against -- two numbers in one
+product describing the cost of holding stock must not disagree.
+
+A **total**, not a mean, so the series count travels with it and there is no
+`__float__`: quoting working capital without saying how much of the portfolio it
+covers is the same mistake as quoting a fill rate without its denominator. An
+unpriced part is **counted, not treated as free** -- a half-priced portfolio
+would otherwise report half the capital and look better than it is, and a zero
+cost is what a missing price looks like after a spreadsheet.
+
+The comparison it enables: on 24 series the fitted forecast buys 97.9% fill for
+12.7M of stock; the tuned reorder point gets 94.8% for 8.4M. That trade was
+previously only expressible in units, which cannot be compared across a
+portfolio -- a thousand fasteners and a thousand castings are not the same
+decision.
+
+**Safety stock as a service target, and the finding that matters more than the
+feature.** `--service-level 0.95` implements the textbook periodic-review form
+with `z` from `statistics.NormalDist`. Then it was measured, and the measurement
+is uncomfortable:
+
+| requested cycle service | achieved fill | lumpy |
+|---|---|---|
+| 80% | 95.9% | 92.4% |
+| 99% | 97.6% | 94.8% |
+
+Nineteen points of requested service move achieved fill by 1.7. Two reasons, and
+both are worth a user knowing: a cycle service level is not a fill rate -- it is
+the probability of surviving a cycle, not the fraction of demand met -- and the
+order-up-to level is dominated by the forecast of lead-time demand, with safety
+stock a modest addition on top. **This dial is not how service is bought here.**
+
+And lumpy demand is worst at every level, which is the normal approximation
+failing exactly where it was always going to. The rule is least reliable for the
+demand pattern this product claims to be for.
+
+**Rejected: solving for a fill-rate target instead.** It is the number planners
+mean, and it is obtainable through the standardised loss function -- but on the
+same normality assumption the lumpy column shows breaking. That trades a number
+which is honestly the wrong measure for one that is confidently the wrong value.
+
+**Rejected: making it the default.** `--safety-days` stays, because "7 days of
+cover" does not tell anyone a probability that does not hold.
+
+**The honest route is recorded rather than done:** the backtest already replays
+every series, so safety stock could be calibrated per pattern against achieved
+fill instead of assumed from a distribution.
+
+**One pin, not twenty.** The four rows move together and each costs a full
+portfolio replay, so the register pins the 95% row and recomputes it.

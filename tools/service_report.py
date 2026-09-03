@@ -38,6 +38,10 @@ def main(argv=None) -> int:
     parser.add_argument("--sample", type=int, default=60,
                         help="series to replay; 0 means the whole portfolio")
     parser.add_argument("--holdout", type=int, default=90)
+    parser.add_argument("--service-level", type=float, default=None, metavar="P",
+                        help="cycle service level as a probability, e.g. 0.95. "
+                             "Replaces --safety-days. NOT a fill-rate target: "
+                             "see docs/service-backtest.md for what it delivers")
     parser.add_argument("--safety-days", type=float, default=7.0)
     parser.add_argument("--sweep", action="store_true",
                         help="trace the service-vs-inventory frontier across safety levels")
@@ -65,7 +69,9 @@ def main(argv=None) -> int:
         return 0
 
     report = simulate.compare(
-        con, demo, keys=keys, holdout_days=args.holdout, safety_days=args.safety_days,
+        con, demo, keys=keys, holdout_days=args.holdout,
+        **({"safety_service_level": args.service_level} if args.service_level
+           else {"safety_days": args.safety_days}),
     )
     _print(report, args)
     return 0
@@ -112,14 +118,29 @@ def _print_frontier(con, demo, keys, args) -> None:
 def _print(report, args) -> None:
     # ASCII only: this prints to a Windows console under cp1252.
     print(f"Service backtest - {report['evaluated']} of {report['portfolio']} series, "
-          f"{report['holdout_days']}-day holdout, {args.safety_days:g} days safety stock")
+          f"{report['holdout_days']}-day holdout, {report['safety_rule']}")
     print(f"demand mix: " + ", ".join(f"{k} {v}" for k, v in report["pattern_mix"].items()))
     print()
-    print(f"{'policy':22s} {'fill rate':>10s} {'avg on-hand':>12s} {'units short':>12s} {'scored':>7s}")
+    print(f"{'policy':22s} {'fill rate':>10s} {'avg on-hand':>12s} "
+          f"{'stock value':>13s} {'carrying/yr':>13s} {'units short':>12s} {'scored':>7s}")
     for name, result in report["policies"].items():
+        value = result.inventory_value
         print(f"{LABELS[name]:22s} {_pct(result.fill_rate.value):>10s} "
               f"{_num(result.average_on_hand.value):>12s} "
+              f"{value.total:13,.0f} {value.annual_carrying:13,.0f} "
               f"{result.units_short:12,.0f} {result.fill_rate.n_scored:7d}")
+
+    # Units cannot be compared across a portfolio -- a thousand fasteners and a
+    # thousand castings are not the same decision -- so the money column is the
+    # one a planner is answerable for. It is a total across the evaluated
+    # series, which is why the count is printed with it.
+    first = next(iter(report["policies"].values())).inventory_value
+    print(f"  stock value totals {first.series} series at "
+          f"{first.carrying_rate * 100:.0f}% annual carrying; costs are synthetic "
+          f"in the demo")
+    if not first.complete:
+        print(f"  WARNING: {first.unpriced} series have no unit cost and "
+              f"contribute nothing to the value columns")
 
     print()
     print("by demand pattern - fill rate / average on-hand:")

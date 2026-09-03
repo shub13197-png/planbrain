@@ -163,6 +163,11 @@ OBSERVED = {
     "numpy.libs": "numpy.libs",
     "VCRUNTIME140.dll": "VCRUNTIME140",
     "VCRUNTIME140_1.dll": "VCRUNTIME140_1",
+    # Unix prefixes shared libraries with `lib` and Windows does not. This one
+    # was the single entry still unresolved after the first cross-platform pass,
+    # which is what a gate looks like when it is nearly right.
+    "libsqlite3.so.0": "sqlite3",
+    "sqlite3.dll": "sqlite3",
 }
 
 
@@ -264,4 +269,14 @@ def test_the_tls_layer_is_caught_under_every_platform_spelling(tmp_path, filenam
     assert "libssl" in forbidden_found, (
         f"{filename} was not recognised as the forbidden TLS layer"
     )
+
+
+def test_the_lib_prefix_is_only_stripped_when_it_has_to_be():
+    """`libcrypto` and `libz` are allowlisted under their own names and must
+    resolve to those, not to `crypto` and `z`. Stripping the prefix first would
+    quietly invent entries and, worse, could collide with a Python package that
+    happens to be named after a C library."""
+    assert normalise("libcrypto.so.3") == "libcrypto"
+    assert normalise("libz.so.1") == "libz"
+    assert normalise("libsqlite3.so.0") == "sqlite3"
 

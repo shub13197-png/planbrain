@@ -278,6 +278,12 @@ def normalise(name: str) -> str:
     reduced = canonical(name)
     if reduced in ALLOWED:
         return reduced
+    # Unix prefixes shared libraries with `lib` and Windows does not:
+    # sqlite3.dll and libsqlite3.so.0 are one library. Tried only after the
+    # canonical form has failed, so `libcrypto` and `libz` -- which are
+    # allowlisted under their own names -- resolve before the prefix is touched.
+    if reduced.startswith("lib") and reduced[3:] in ALLOWED:
+        return reduced[3:]
     for token in ("-", "."):
         head = name.split(token)[0]
         if head in ALLOWED:

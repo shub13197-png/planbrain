@@ -257,3 +257,52 @@ the plant can actually make, and the service backtest replays a feasible plan
 rather than an aspirational one. Deliberately not built here: it is a different
 and much harder problem, and a crude honest range is worth more today than a
 precise number three items away.
+
+## Safety stock as a service target, and what it actually delivers
+
+`--service-level 0.95` replaces `--safety-days 7` with the textbook periodic
+review form, `SS = z(alpha) * sigma * sqrt(L + R)` (Silver, Pyke & Peterson,
+ch. 7). `z` comes from `statistics.NormalDist` -- stdlib, exact, and no
+dependency added to the bundle for one line of arithmetic.
+
+**It is a cycle service level, and a cycle service level is not a fill rate.**
+Cycle service is the probability of getting through a replenishment cycle
+without a stockout; fill rate is the fraction of demand met. They are different
+questions, and the second is almost always the higher number. A planner who
+types 95 expecting 95% of demand met will get something else, so here is the
+something else, measured on the full portfolio at seed 7:
+
+| requested cycle service | overall fill | smooth | erratic | intermittent | lumpy |
+|---|---|---|---|---|---|
+| 80% | **95.9%** | 97.9% | 95.9% | 96.3% | 92.4% |
+| 90% | 96.5% | 98.4% | 96.7% | 96.9% | 93.0% |
+| 95% | **97.0%** | 98.7% | 97.3% | 97.6% | 93.7% |
+| 99% | 97.6% | 99.0% | 97.8% | 98.0% | 94.8% |
+
+**Two things a reader should take from that table, and neither flatters the
+feature.**
+
+First, the parameter is weak: nineteen points of requested service move the
+achieved fill by 1.7. The order-up-to level is dominated by the forecast of
+lead-time demand and safety stock is a modest addition on top. Turning this dial
+is not how service is bought here -- improving the forecast is, which is what
+the 97.2% against 76.1% comparison at the top of this document is about.
+
+Second, **lumpy demand is worst at every level**, 92.4% where smooth gets 97.9%.
+That is the normal approximation failing exactly where it was always going to:
+lumpy series are mostly zeros with occasional spikes, and `z * sigma` describes
+that badly. The rule is least reliable for the demand pattern this product
+claims to be for, which is the uncomfortable half of the result.
+
+**Rejected: solving for a fill-rate target instead.** It is the number planners
+actually mean and it is obtainable through the standardised loss function -- but
+it rests on the same normality assumption the lumpy column shows breaking. That
+would replace a number which is honestly the wrong measure with one that is
+confidently the wrong value.
+
+**The way to do it properly is empirical.** This backtest already replays every
+series, so safety stock could be calibrated per pattern against achieved fill
+rather than assumed from a distribution. That is real work and is not done.
+Until it is, `--safety-days` stays the default, because a planner reading
+"7 days of cover" is not being told a probability that does not hold.
+
