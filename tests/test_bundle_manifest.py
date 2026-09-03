@@ -168,6 +168,14 @@ OBSERVED = {
     # which is what a gate looks like when it is nearly right.
     "libsqlite3.so.0": "sqlite3",
     "sqlite3.dll": "sqlite3",
+    # macOS ships CPython as a framework bundle. Three platforms, three
+    # spellings, one interpreter, one allowlist entry.
+    "Python.framework": "python",
+    # The Windows CI build carries these and a local Windows build on 3.14 does
+    # not. Same OS, same spec, different interpreter, fourteen different files.
+    "ucrtbase.dll": "ucrtbase",
+    "api-ms-win-crt-math-l1-1-0.dll": "api-ms-win",
+    "api-ms-win-core-errorhandling-l1-1-0.dll": "api-ms-win",
 }
 
 

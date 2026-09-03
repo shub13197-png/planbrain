@@ -352,3 +352,38 @@ def test_progress_lines_are_not_mistaken_for_a_response():
         "the progress check must come before the waiter lookup"
     )
 
+
+PACKAGE = yaml.safe_load(
+    (ROOT / ".github" / "workflows" / "package.yml").read_text(encoding="utf-8")
+)
+
+
+def test_every_workflow_builds_linux_on_the_same_image():
+    """glibc is backward compatible and not forward compatible.
+
+    An artifact built against a newer glibc refuses to start on an older
+    distribution, and the failure reaches the user as a loader error naming a
+    symbol version. `release.yml` pinned ubuntu-22.04 for that reason from the
+    day Linux was added; `package.yml` -- the job whose entire purpose is to
+    catch this -- was still on ubuntu-latest, and duly produced an artifact that
+    could not start in Debian 12.
+
+    Two workflows disagreeing about the build image is not visible in either
+    file, which is why the rule is asserted across them.
+    """
+    release_images = {
+        entry["os"]
+        for entry in RELEASE["jobs"]["build"]["strategy"]["matrix"]["include"]
+        if "linux" in entry["triple"]
+    }
+    package_images = {PACKAGE["jobs"]["offline-artifact"]["runs-on"]}
+
+    assert release_images == package_images, (
+        f"release builds Linux on {release_images} and package on "
+        f"{package_images}; the artifact tested is not the artifact shipped"
+    )
+    assert "latest" not in str(release_images | package_images), (
+        "ubuntu-latest moves under you: the day it advances, every Linux "
+        "artifact silently stops running on older distributions"
+    )
+

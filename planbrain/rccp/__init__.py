@@ -16,6 +16,7 @@ from ..facts.access import Fact, bucket_spine, read_facts, write_facts
 from ..facts.scenario import growth_of
 from ..forecast.growth import growth_factors
 from .core import ResourceLoad, Routing, compute_load, load_all
+from .relief import Contributor, Overload, explain_overload, summarise
 
 DEMAND_TABLE = "fact_supply_demand"
 CAPACITY_TABLE = "fact_capacity"
@@ -131,6 +132,61 @@ def run(con, demo, *, scenario_id: int = 0) -> dict:
         },
         "feasible": all(not load.overloaded_buckets for load in loads),
     }
+
+
+def relief(con, demo, *, scenario_id: int = 0, window: int = 7) -> dict:
+    """Explain every overloaded bucket. Diagnosis, not a solution.
+
+    Same inputs as ``run``, so the two cannot disagree about what the plan is.
+    Returns the summary shape plus one entry per overloaded resource-bucket with
+    its contributors ranked by hours and the spare hours nearby.
+
+    It does not decide what to move. See ``planbrain.rccp.relief`` for why that
+    line is drawn where it is.
+    """
+    spine = bucket_spine(demo.horizon_start, demo.horizon_end)
+    production_loc = next(loc.loc_id for loc in demo.locations if loc.kind == "plant")
+    routings = [
+        Routing(
+            sku_id=r.sku_id, resource_id=r.resource_id,
+            hours_per_unit=r.hours_per_unit, setup_hours=r.setup_hours,
+        )
+        for r in demo.routings
+    ]
+    routed_skus = sorted({r.sku_id for r in routings})
+    releases = _read_series(
+        con, DEMAND_TABLE, scenario_id=scenario_id, measure=RELEASE_MEASURE,
+        keys=[(sku, production_loc) for sku in routed_skus], spine=spine, key_index=0,
+    )
+    if not any(any(series) for series in releases.values()):
+        raise NoPlanError(
+            "no planned order releases for this horizon and scenario; run "
+            "planbrain.netreq.run() before asking what is overloading the plant"
+        )
+
+    resource_ids = sorted({r.resource_id for r in routings})
+    capacity = _read_series(
+        con, CAPACITY_TABLE, scenario_id=scenario_id, measure=AVAIL_MEASURE,
+        keys=[(rid,) for rid in resource_ids], spine=spine, key_index=0,
+    )
+    growth = growth_of(con, scenario_id)
+    factors = growth_factors(spine, anchor=demo.history_end,
+                             annual_pct=growth.capacity_pct)
+
+    overloads = []
+    for rid in resource_ids:
+        hours = capacity.get(rid, [0.0] * len(spine))
+        overloads.extend(explain_overload(
+            resource_id=rid,
+            capacity_avail_hours=[h * f for h, f in zip(hours, factors)],
+            routings=routings,
+            planned_order_release=releases,
+            spine=spine,
+            window=window,
+        ))
+
+    return {"window_days": window, "summary": summarise(overloads),
+            "overloads": overloads}
 
 
 def _read_series(con, table, *, scenario_id, measure, keys, spine, key_index) -> dict:

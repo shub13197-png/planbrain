@@ -40,7 +40,18 @@ jobs:
   # such in docs/offline.md.
   # ---------------------------------------------------------------------
   offline-artifact:
-    runs-on: ubuntu-latest
+    # ubuntu-22.04, matching release.yml, and not ubuntu-latest. Built on the
+    # newer image this job produced an artifact that would not start in
+    # debian:12-slim at all:
+    #
+    #   libpython3.12.so.1.0: version `GLIBC_2.38' not found
+    #
+    # glibc is backward compatible and not forward compatible, so a binary built
+    # against a newer one refuses to run on an older distribution -- which is
+    # every user still on Debian 12 or Ubuntu 22.04. The release workflow already
+    # built on 22.04 for exactly this reason; this job did not, so the check that
+    # was supposed to catch it was itself running on the wrong image.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

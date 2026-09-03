@@ -262,6 +262,10 @@ def canonical(name: str) -> str:
     becoming `libbz` and `VCRUNTIME`.
     """
     stem = _EXTENSION.split(name, maxsplit=1)[0]
+    # macOS ships CPython as a framework bundle rather than a bare dylib.
+    # Python.framework, python314.dll and libpython3.12.so.1.0 are one thing.
+    if stem.endswith(".framework"):
+        stem = stem[: -len(".framework")]
     if stem.lower().startswith("api-ms-win"):
         # Windows API-set forwarders: thirteen near-identical stubs
         # (api-ms-win-crt-math-l1-1-0 and friends) that are all one thing, the

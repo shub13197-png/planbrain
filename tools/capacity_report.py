@@ -30,6 +30,9 @@ def main(argv=None) -> int:
     parser.add_argument("--lot-sizing", default="as_master",
                         choices=["as_master", "cost_based"],
                         help="cost_based prices changeover into the lot size")
+    parser.add_argument("--explain", action="store_true",
+                        help="attribute each overloaded bucket to the SKUs that "
+                             "loaded it, and show the nearest spare hours")
     parser.add_argument("--demand-growth", type=float, default=0.0, metavar="PCT",
                         help="annual %% growth in demand, compounded daily from "
                              "the last actual. Needs --source forecast")
@@ -63,7 +66,54 @@ def main(argv=None) -> int:
     report = rccp.run(con, demo)
 
     _print(report, demo, con)
+    if args.explain:
+        _explain(rccp.relief(con, demo), demo)
     return 0
+
+
+def _explain(explained, demo, top: int = 8) -> None:
+    """What is in the overloaded buckets. A diagnosis, not an instruction."""
+    summary = explained["summary"]
+    if not summary["buckets"]:
+        print()
+        print("Nothing to explain: every bucket fits.")
+        return
+
+    names = {p.sku_id: getattr(p, "name", p.sku_id) for p in demo.parts}
+    print()
+    print(f"Overload detail - {summary['buckets']} buckets across "
+          f"{summary['resources']} resources, {summary['over_hours']:,.0f} h over")
+    print(f"  worst single SKU: {names.get(summary['worst_sku'], summary['worst_sku'])} "
+          f"at {summary['worst_sku_hours']:,.0f} h "
+          f"({summary['concentration']:.0%} of the excess)")
+    if summary["concentration"] < 0.15:
+        # The number that decides which conversation to have. Said in words,
+        # because a planner reading "4%" may not read it as "rescheduling one
+        # product cannot fix this".
+        print("  no single product dominates, so this is a capacity decision "
+              "rather than a scheduling one")
+    print(f"  at most {summary['relievable_by_moving_earlier_upper_bound']} of "
+          f"{summary['buckets']} buckets have enough spare hours in the previous "
+          f"{explained['window_days']} days -- an UPPER bound: neighbouring")
+    print("  overloaded buckets are measured against the same spare hours and "
+          "cannot all use them")
+
+    worst = sorted(explained["overloads"], key=lambda o: -o.over_hours)[:top]
+    print()
+    print(f"  {'resource':>8s} {'bucket':>12s} {'over h':>8s} {'slack -':>8s} "
+          f"{'slack +':>8s}  top contributors")
+    for over in worst:
+        top_skus = ", ".join(
+            f"{names.get(c.sku_id, c.sku_id)} {c.hours:.0f}h"
+            for c in over.contributors[:3]
+        )
+        print(f"  {over.resource_id:8d} {str(over.bucket_date):>12s} "
+              f"{over.over_hours:8.0f} {over.slack_before:8.0f} "
+              f"{over.slack_after:8.0f}  {top_skus}")
+    print()
+    print("  This says where the hours are, not what to move: production can only")
+    print("  move earlier if the components are there earlier, which capacity")
+    print("  planning cannot see. Choosing is the capacitated lot-sizing problem.")
 
 
 def _print(report, demo, con) -> None:

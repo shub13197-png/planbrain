@@ -1552,3 +1552,56 @@ Linux user on a minimal install can hit it and needs to be told `zlib1g` and
 `libwebkit2gtk-4.1-0`. "Self-contained" stays true in the sense that matters --
 no runtime, no packages, no network. "Statically linked" was never true and is
 not claimed.
+
+
+## 2026-09-03 — Capacity explains itself, and refuses to solve itself
+
+`rccp.relief` attributes every overloaded bucket: which SKUs put the hours
+there, split into run and setup, and how many spare hours sit nearby on the same
+resource. `--explain` on the capacity report prints it.
+
+**It does not say what to move**, and that line is the point. "Move 3,200 units
+of SKU-104 to Tuesday" claims two things: that Tuesday has the hours, and that
+the material will be there. This can see the first and cannot see the second --
+component availability is `netreq`'s question, and it depends on lead times,
+on-hand stock and the BOM. Presenting the first as though it settled both is a
+plan number that looks right.
+
+**Two headline numbers, and both needed care.**
+
+`concentration` is the share of excess attributable to the single worst SKU. On
+the demo it is **4%**, which is the answer: no single product dominates, so this
+is a capacity decision and not a scheduling one. Printed in words as well as a
+percentage, because a planner reading "4%" may not read it as "rescheduling one
+product cannot fix this".
+
+`relievable_by_moving_earlier` was renamed to
+`relievable_by_moving_earlier_upper_bound` after the first run reported 131 of
+139. Each bucket is tested against the spare hours before it, and neighbouring
+overloaded buckets are tested against **the same spare hours**. They cannot all
+use them. A reader seeing "131 of 139 relievable" would reasonably conclude the
+plant is fine. The honest lower bound needs an allocation across buckets, which
+is the solver this module exists in order not to be.
+
+## 2026-09-03 — FINDING: the job that guards against glibc drift had the drift
+
+The Linux artifact would not start in `debian:12-slim`:
+
+    libpython3.12.so.1.0: version `GLIBC_2.38' not found
+
+`release.yml` pinned `ubuntu-22.04` for Linux from the day the target was added,
+with a comment explaining that glibc is backward compatible and not forward
+compatible. `package.yml` -- the workflow whose entire purpose is to catch
+packaging faults before a release -- was still on `ubuntu-latest`.
+
+So the artifact being tested was not the artifact being shipped, and the check
+that existed to catch exactly this class of problem was itself built wrong. Two
+workflows disagreeing about a build image is invisible in either file, so the
+rule is now asserted across them, including that neither may use a `latest`
+image: the day it advances, every Linux artifact silently stops running on older
+distributions.
+
+**Round three of the cross-platform gate**, and each round found something the
+previous could not have: spelling, then contents, then the build environment
+itself. Windows now passes the package workflow end to end -- the first platform
+to do so.
