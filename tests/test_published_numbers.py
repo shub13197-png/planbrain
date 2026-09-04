@@ -26,11 +26,12 @@ import pytest
 
 from planbrain import netreq, rccp, simulate
 from planbrain.demo import build_demo, populate
+from planbrain.facts.access import read_facts
 from planbrain.forecast import demand_keys
 from planbrain.haulplan import Ledger, jain_index
 from planbrain.haulplan.assign import assign
 from planbrain.haulplan.fairness import ceiling
-from tools.published import Computed, FIGURES
+from tools.published import Computed, FIGURES, by_key
 
 SCHEMA = Path(__file__).resolve().parents[1] / "planbrain" / "facts" / "schema.sql"
 SEED = 7
@@ -63,6 +64,61 @@ def pipeline():
     capacity = rccp.run(con, demo)
     yield con, demo, capacity
     con.close()
+
+
+@pytest.fixture(scope="module")
+def ordered():
+    """The path a user actually clicks: forecast, then net against it.
+
+    Its own connection and its own forecast pass, rather than reusing
+    `pipeline`, which nets against a replay of last year. The two produce
+    genuinely different plans -- 2001 releases against 1843 -- and the figures
+    in `docs/orders.md` describe the default the application ships with. Costs a
+    full forecast over 222 series; the alternative is a published number nothing
+    recomputes.
+    """
+    from planbrain import forecast, orders
+
+    con = sqlite3.connect(":memory:")
+    con.execute("PRAGMA foreign_keys = ON")
+    con.executescript(SCHEMA.read_text(encoding="utf-8"))
+    demo = build_demo(seed=SEED)
+    populate(con, demo)
+    forecast.run(con, demo)
+    netreq.run(con, demo, source="forecast", lot_sizing="cost_based")
+    yield orders.order_list(con, demo), con, demo
+    con.close()
+
+
+def test_the_order_list_is_the_size_the_docs_publish(ordered):
+    """The count of the answer that used to be discarded.
+
+    Pinned because it is the headline of `docs/orders.md`, and because it moves
+    with the demo, the forecast models and the lot-sizing rule -- none of which
+    would break a behaviour test on their way past.
+    """
+    rows, con, demo = ordered
+    # Through the accessor, not raw SQL: storage is sparse, so a non-zero count
+    # off a densified read is the same number, and the exemption for reading a
+    # fact table directly stays confined to tests/test_orders.py.
+    receipts = sum(
+        1 for f in read_facts(
+            con, "fact_supply_demand", scenario_id=0,
+            measure="planned_order_receipt",
+            start=demo.horizon_start, end=demo.horizon_end,
+            keys=[(p.sku_id, loc.loc_id) for p in demo.parts for loc in demo.locations],
+        ) if f.qty
+    )
+
+    assert len(rows) == by_key("orders_total").value
+    assert receipts == by_key("orders_receipts").value
+    assert sum(1 for o in rows if o.action == "make") == by_key("orders_make").value
+    assert sum(1 for o in rows if o.action == "buy") == by_key("orders_buy").value
+
+    # The gap is the claim: more receipts than releases, because _offset merges
+    # them onto working buckets. If these ever came out equal, the list could
+    # carry a due date per row and docs/orders.md would be wrong to refuse one.
+    assert receipts > len(rows)
 
 
 def test_the_dataset_is_the_one_the_docs_describe(pipeline):

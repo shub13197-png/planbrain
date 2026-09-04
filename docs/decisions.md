@@ -1658,3 +1658,208 @@ contents, then the build environment.
 The backend halves of the installers are now verified everywhere they ship. The
 Tauri compile remains unverified: there is no Rust toolchain in this
 environment, and `release.yml` is what will settle it.
+
+
+## 2026-09-04 — The application was launched for the first time, and it was broken
+
+Nobody had ever run it. The Tauri shell compiled in CI and everything known
+about it came from cross-file assertions; `docs/packaging.md` said as much and
+CI was named as the only thing that could settle it. There is no Rust toolchain
+in this environment, so the shell stayed unverified.
+
+It did not have to. The last successful release run still had its Windows
+artifact, so: download it, verify it against the published `SHA256SUMS.txt`
+(**both matched — the checksum mechanism worked end to end, exercised by a
+consumer for the first time**), extract the MSI with `msiexec /a` into a short
+path, and launch it.
+
+**The MSI is sound.** An administrative extract to the scratchpad first failed
+with `Error 1304`, which is a `MAX_PATH` overflow from the deep temp directory
+and not a defect in the package — the same extract into `C:\pbx` succeeded. The
+packaged backend then ran on this machine, offline guard engaged, and built the
+demo. The window opened, titled and rendered, with the tabs and all three
+sections drawn.
+
+**And the status bar read `starting…` forever.** The backend process was alive
+and answering the whole time.
+
+The shell spawns the backend in `setup()` and starts a reader thread that emits
+each stdout line as a Tauri event. The backend prints its `ready` frame within
+milliseconds. The webview then loads `index.html`, which only then runs the
+module script that calls `listen("backend", ...)`. A Tauri event reaches the
+listeners that exist when it is emitted, so **the first line was emitted into an
+empty room and dropped, on every launch, on every platform.**
+
+That line carries the offline state. The status bar showing whether the guard is
+engaged is the product's central claim, and it never resolved. `loadProfiles()`
+is called on the same frame, so the saved-mapping list never loaded either.
+
+**Nothing in either file is wrong.** It is wrong in the order two things happen,
+which is why every cross-file rule we have passed it, and why it took launching
+the application to see. Fixed by buffering output until the interface asks for
+it: `drain_backend` hands over the backlog and flips the shell to emitting live,
+with the flag read under the same lock in both directions so a line is never
+delivered twice and never lost.
+
+**Buffering rather than re-sending the ready frame**, which would have been
+smaller. The general fault is worse than its symptom: a backend that dies during
+startup emits its error early too, and that line disappearing leaves the user
+staring at `starting…` with the one message that would have explained it already
+discarded.
+
+**Second finding, in the same place.** `backend-exit` has been emitted since the
+reader thread was written and the frontend never listened for it — a backend
+that died mid-session left the window waiting for a reply that was never coming,
+silently. Now asserted across the two files: every event the shell emits must
+have a handler in the interface.
+
+## 2026-09-04 — The plan computed 2001 orders and showed none of them
+
+`plan.run` returned a forecast summary and a capacity verdict, and the results
+screen rendered one table: utilisation by resource. A planner's session ended at
+*"utilisation 89.5%, 134 overloaded days"*. Meanwhile, in the fact table:
+
+    planned_order_receipt  2070
+    planned_order_release  2001
+
+**The arithmetic was right and the answer was discarded one step before it
+reached a human.** This is the specific place a spreadsheet was beating the
+product — not on forecasting, not on capacity, but on ending the session with a
+list somebody can send to a supplier. `planbrain/orders.py` and
+`docs/orders.md`.
+
+`orders.py` computes nothing: quantities are read back from the fact tables
+exactly as `netreq` wrote them, and the module joins names onto ids, sorts, and
+writes a file. Architecture rule 4 holds trivially because there is no
+arithmetic on the page.
+
+**The list is releases, not receipts.** `_offset` pulls a release back to the
+previous working bucket, so two receipts can merge onto one release date — which
+is exactly the 2070/2001 gap. A due-date column beside each release would assert
+a pairing that does not exist, so the list carries the lead time and leaves the
+arithmetic visible.
+
+**Rejected: pairing the k-th receipt with the k-th release.** It looks exact and
+is wrong in precisely the 69 cases where the offset merged two, which is the
+worst possible distribution of a defect: right everywhere a reader would check
+by hand.
+
+**Rejected: a value column, for now.** Parts carry a rolled-up `unit_cost` and
+a total would be the number a finance manager asks for first. Left out because
+the demo's costs are synthetic, and a rupee figure on a printed order list is
+the number most likely to be quoted without its caveat.
+
+**The empty export is refused rather than written.** A header-only sheet tells a
+planner there is nothing to order; the realistic cause is that no plan was run.
+Same shape as a size gate that passes because it measured nothing.
+
+## 2026-09-04 — `dialog:allow-save` granted, and what the old test was protecting
+
+`test_nothing_is_permitted_to_write_outside_the_application_directory` asserted
+that `dialog:allow-save` was absent, on the stated reasoning that the import flow
+reads a file the user chose and never writes one back. Exporting the order list
+made that reasoning obsolete, so the permission is granted and the assertion
+changed.
+
+**Recorded because changing a test to admit your own work is the move a reader
+should be most suspicious of.** What was actually protected is still protected
+and is still asserted: no `fs:` permission, so the interface can neither read
+nor write a file itself. A save dialog returns a *path*; the backend writes the
+file. Granting `fs:` would let the frontend write anywhere on its own and is
+still refused. The test kept its teeth and lost a clause that had stopped being
+true — which is a different act from lowering a threshold, and the difference is
+whether the property or the number moved.
+
+## 2026-09-04 — Artifacts upload before the gate that rejects them
+
+`check_installer_size.py` ran before `upload-artifact`, so a build it failed
+uploaded nothing. That is how the 330 MB MSI came to be diagnosed twice from a
+build *log*: WebView2 was ruled out because a grep of the log found only Rust
+crate names, and the offline runtime installer was inside the MSI the whole
+time.
+
+Absence in a log is not absence in an artifact — and you cannot search an
+artifact that was never uploaded. The upload now runs first. The gate still
+fails the build; this only changes whether the thing it rejected can be opened.
+
+## 2026-09-04 — Overrides: designed, deliberately not built yet
+
+Asked for explicitly, and designed in `docs/overrides.md` before any of it is
+written, because it adds to the measure vocabulary and that is a contract.
+
+The mechanism is the textbook **firm planned order**, not a new invention: the
+planner fixes quantity and date, and subsequent runs net around it rather than
+resizing or rescheduling it. `derived = 0`, so it is an input in the same class
+as `scheduled_receipt` — which means `write_plans`'s existing refusal to write a
+non-derived measure already stops a planning run from overwriting a human's
+number, with no new rule.
+
+Provenance goes in a separate `plan_override` table holding author, reason and
+timestamp and **not** the quantity, which stays in the fact row only. Two copies
+of a number is two numbers.
+
+**Rejected: overriding the forecast instead of the order.** Cheaper and
+internally consistent, but it answers a different question. "This customer will
+take 500" and "make 500, not 860" are not the same statement, and only the
+second is a planner overruling the plan.
+
+**Rejected: editing in place with no separate concept**, which is what Excel
+does and is why an Excel plan cannot be re-run. **Rejected: a notes field with
+no effect on the plan** — the planner writes down what they know, the plan
+ignores it, and the numbers are now wrong *and* annotated.
+
+## 2026-09-05 — The application saved nothing, and the install guide said it did
+
+`planbrain/backend/__main__.py` called `session()`. The default is `":memory:"`.
+
+So the packaged application held everything in RAM and discarded it when the
+window closed: the imported history, the column mapping, the plan. A planner
+could spend an afternoon mapping a Tally export and lose all of it by closing a
+window, with no warning and no prompt.
+
+Meanwhile `docs/install.md` told them, in three separate places:
+
+* **One application and one SQLite file.**
+* **Your data stays in a file you can see.** Delete it and it is gone; copy it
+  and you have a backup.
+* [uninstalling] *Neither removes your planning database* — `%LOCALAPPDATA%\PlanningBrain\`
+
+**That directory was never created by anything.** The uninstall instructions
+told people to delete a folder that did not exist, to remove data that was never
+written, in the one document a user reads before trusting the application with a
+year of their history.
+
+Found by asking what happens when the window closes — which is a question only
+worth asking once you have a window, and nobody had launched one until today.
+
+`default_database()` now resolves the documented path per platform, and the
+schema is applied only to a database that does not already have one:
+`schema.sql` both creates tables and seeds scenario 0, so re-running it on the
+second launch would either crash on `table scenario already exists` or, worse,
+succeed and leave two scenario-0 rows for every read keyed on it to find.
+
+**The paths are asserted against the prose**, not merely written to match it. If
+the two drift, the uninstall instruction deletes the wrong folder and the user
+believes their data is gone when it is not — a worse failure than the one being
+fixed.
+
+**`--db :memory:` remains**, as a flag. A throwaway session is a legitimate
+thing to want; it is not a legitimate thing for everybody to get silently.
+
+**Rejected: asking the user where to put the file on first run.** It is a
+question with one sensible answer, asked of someone who has not yet seen the
+application do anything, and the platform conventions already exist for exactly
+this. The path is displayed instead — the ready frame now carries it and the
+status bar holds it — so it is discoverable rather than chosen.
+
+## 2026-09-05 — The frontend is 500 lines nothing had ever parsed
+
+`tauri build` copies `dist/` verbatim. No test, linter or build step read
+`index.html`, so a syntax error in the module script would ship and arrive as a
+blank window, with the cause only in a devtools console the user does not have
+open.
+
+`node --check` on the extracted module, skipped where node is absent — the
+offline container has none, the GitHub runners have it preinstalled. Cheap, and
+it is the closest thing to a runtime check this suite has for the half of the
+application written in JavaScript.

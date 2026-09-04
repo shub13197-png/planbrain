@@ -106,6 +106,22 @@
 </div>
 <div id="planResult"></div>
 
+<div id="ordersSection" hidden>
+<h2>4 &middot; What to order</h2>
+<div class="row">
+  <label>Show
+    <select id="orderFilter">
+      <option value="">everything</option>
+      <option value="make">only what the plant makes</option>
+      <option value="buy">only what has to be bought</option>
+    </select>
+  </label>
+  <button id="exportOrders" class="primary">Save the list&hellip;</button>
+  <span class="note" id="orderNote"></span>
+</div>
+<div id="orderTable"></div>
+</div>
+
 </div><!-- /planPane -->
 
 <div id="importPane" hidden>
@@ -158,9 +174,11 @@
 // in an app whose central claim is that nothing leaves the machine.
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
-// The only capability granted beyond a window. `save` is deliberately not
-// granted: nothing here writes outside its own data directory.
-const { open } = window.__TAURI__.dialog;
+// The two capabilities granted beyond a window: a picker to choose a
+// spreadsheet, and a save dialog to name the order list on the way out. The
+// dialog returns a PATH, not a handle -- no filesystem permission is granted
+// and the frontend cannot write anything. The backend writes the file.
+const { open, save } = window.__TAURI__.dialog;
 
 const $ = (id) => document.getElementById(id);
 const pending = new Map();
@@ -174,14 +192,18 @@ function call(method, params, onProgress) {
   });
 }
 
-listen("backend", (e) => {
-  for (const line of String(e.payload).split("\n")) {
+function onBackendOutput(payload) {
+  for (const line of String(payload).split("\n")) {
     if (!line.trim()) continue;
     let msg; try { msg = JSON.parse(line); } catch { continue; }
     if (msg.ready) {
       $("status").innerHTML = msg.offline
         ? '<span class="offline">Offline &mdash; nothing leaves this machine.</span>'
         : '<span class="bad">The offline guard is NOT engaged. Please report this.</span>';
+      // "Where is my data?" is otherwise unanswerable from inside the window,
+      // and the answer used to be "nowhere" -- the backend ran in memory and
+      // discarded everything on close.
+      if (msg.database) $("status").title = "Your data: " + msg.database;
       loadProfiles();
       continue;
     }
@@ -198,9 +220,38 @@ listen("backend", (e) => {
     pending.delete(msg.id);
     msg.ok ? waiter.resolve(msg.result) : waiter.reject(msg.error);
   }
-});
-listen("backend-error", (e) => { $("status").innerHTML =
-  '<span class="bad">backend error: ' + e.payload + '</span>'; });
+}
+
+const onBackendError = (payload) => { $("status").innerHTML =
+  '<span class="bad">backend error: ' + payload + '</span>'; };
+
+const HANDLERS = {
+  "backend": onBackendOutput,
+  "backend-error": onBackendError,
+  "backend-exit": onBackendError,
+};
+
+// Attach the listeners, THEN ask the shell for anything the backend said
+// before they existed.
+//
+// The backend is spawned in Rust's `setup()` and prints its `ready` line within
+// milliseconds; this script does not run until the webview has loaded. Every
+// launch therefore used to lose that line, and the status bar sat at
+// "starting..." forever while the backend was up and answering. `drain_backend`
+// hands over what was buffered and flips the shell to emitting live -- so the
+// awaits below are load-bearing, not tidiness. Draining before the listeners
+// are attached would reopen the same gap it closes.
+(async () => {
+  await Promise.all(
+    Object.entries(HANDLERS).map(([event, handler]) =>
+      listen(event, (e) => handler(e.payload))),
+  );
+  const buffered = await invoke("drain_backend");
+  for (const [event, line] of buffered) {
+    const handler = HANDLERS[event];
+    if (handler) handler(line);
+  }
+})();
 
 // --- tabs ------------------------------------------------------------------
 
@@ -303,10 +354,86 @@ function renderPlan(r) {
     </table></div>` + caveat + suppressed;
 }
 
+// --- the order list --------------------------------------------------------
+// The reason this section exists: the run computed 2001 planned orders and the
+// screen showed a utilisation percentage. A planner cannot act on a percentage,
+// and the spreadsheet they already have ends with a list they can send to a
+// supplier. This is that list.
+
+async function renderOrders() {
+  const filter = $("orderFilter").value || null;
+  let r;
+  try {
+    r = await call("plan.orders", { limit: 100, action: filter });
+  } catch (err) {
+    $("orderNote").innerHTML = '<span class="bad">' + (err.message || err) + "</span>";
+    return;
+  }
+
+  $("ordersSection").hidden = false;
+  $("exportOrders").disabled = r.total === 0;
+
+  if (r.total === 0) {
+    // Distinct from "no plan has run". A plan that genuinely orders nothing is
+    // a real answer and must not look like a screen that failed to load.
+    $("orderNote").textContent = "This plan orders nothing in the horizon.";
+    $("orderTable").innerHTML = "";
+    return;
+  }
+
+  // Says what is on screen against what exists. A list showing 100 of 2001
+  // without saying so reads as a list of 100.
+  $("orderNote").textContent =
+    `${num(r.total)} orders — ${num(r.totals.make)} to make, ` +
+    `${num(r.totals.buy)} to buy. Showing the first ${num(r.shown)}.`;
+
+  const rows = r.orders.map((o) => `<tr>
+      <td>${o.release_date}</td>
+      <td>${o.name}</td>
+      <td>${o.action}</td>
+      <td>${num(o.qty)}</td>
+      <td>${o.location}</td>
+      <td>${o.lead_time_days} d</td>
+    </tr>`).join("");
+
+  $("orderTable").innerHTML = `<div class="scroll"><table>
+      <tr><th>place on</th><th>item</th><th>action</th><th>quantity</th>
+          <th>at</th><th>lead time</th></tr>
+      ${rows}
+    </table></div>
+    <p class="note">Dates are when the order must be <em>placed</em>, not when it
+     lands. These are suggestions to act on, not purchase orders — raising
+     and receiving an order belongs to the system you already run.</p>`;
+}
+
+$("orderFilter").onchange = renderOrders;
+
+$("exportOrders").onclick = async () => {
+  const path = await save({
+    defaultPath: "planned-orders.xlsx",
+    filters: [{ name: "Excel", extensions: ["xlsx"] },
+              { name: "CSV", extensions: ["csv"] }],
+  });
+  if (!path) return;                 // cancelled, which is not an error
+  $("exportOrders").disabled = true;
+  $("orderNote").textContent = "writing…";
+  try {
+    // The whole list, never the page on screen: a file that quietly held the
+    // 100 visible rows would look complete and be wrong.
+    const r = await call("plan.export", { path, action: $("orderFilter").value || null });
+    $("orderNote").textContent = `Wrote ${num(r.rows)} orders to ${r.path}`;
+  } catch (err) {
+    $("orderNote").innerHTML = '<span class="bad">' + (err.message || err) + "</span>";
+  } finally {
+    $("exportOrders").disabled = false;
+  }
+};
+
 $("runPlan").onclick = async () => {
   if (!dataLoaded) return;
   $("runPlan").disabled = true;
   $("planResult").innerHTML = "";
+  $("ordersSection").hidden = true;
   try {
     await call("scenario.growth", {
       demand_growth_pct: Number($("demandGrowth").value) || 0,
@@ -319,6 +446,7 @@ $("runPlan").onclick = async () => {
     );
     $("planNote").textContent = "Done.";
     renderPlan(r);
+    await renderOrders();
   } catch (err) {
     $("planNote").innerHTML = '<span class="bad">' + (err.message || err) + "</span>";
   } finally {

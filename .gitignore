@@ -9,6 +9,7 @@ venv/
 *.sqlite3
 data/local/
 data/m5/
+data/online-retail/
 
 # packaging
 build/

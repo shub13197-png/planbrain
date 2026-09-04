@@ -1,12 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The minimum this application needs: a window, and a file picker for choosing a spreadsheet. No shell execution permission is granted -- the backend is spawned directly by the Rust process at a path we computed, so there is no scope for a shell plugin to widen.",
+  "description": "The minimum this application needs: a window, a file picker for choosing a spreadsheet, and a save dialog for naming the exported order list. Both dialogs return a PATH and nothing more -- no filesystem permission is granted, so the frontend cannot read or write a file itself; the backend does both, at a path the user chose. No shell execution permission is granted either -- the backend is spawned directly by the Rust process at a path we computed, so there is no scope for a shell plugin to widen.",
   "windows": [
     "main"
   ],
   "permissions": [
     "core:default",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "dialog:allow-save"
   ]
 }

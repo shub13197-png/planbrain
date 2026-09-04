@@ -8,7 +8,9 @@ to marshal, not to compute; a rule that has kept the arithmetic testable without
 a database since item 3.
 """
 
+import os
 import sqlite3
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -37,11 +39,55 @@ class Session:
             self.emit({"stage": stage, **detail})
 
 
+def default_database() -> Path:
+    """The file `docs/install.md` tells the user their planning data lives in.
+
+    One directory per platform convention, and the uninstall section of the
+    guide names all three so a user can delete their data deliberately. The
+    paths are asserted against that prose in `tests/test_persistence.py`: if
+    these two drift, the guide tells someone to delete a folder that is not the
+    one holding their history.
+
+    `sys.platform` rather than `os.name`, because macOS and Linux need
+    different answers and both are `posix`.
+    """
+    if sys.platform == "win32":
+        root = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+    elif sys.platform == "darwin":
+        root = Path.home() / "Library" / "Application Support"
+    else:
+        root = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
+    return root / "PlanningBrain" / "planning.db"
+
+
 def session(path: str = ":memory:") -> Session:
+    """Open the planning database, creating it on first run.
+
+    **The schema is applied only to a database that does not have one.**
+    `schema.sql` creates tables and seeds scenario 0, so running it against an
+    existing file raises `table scenario already exists` -- the application
+    would have died on its second launch. Succeeding would be worse: a second
+    seed row, and every read keyed on scenario 0 finding two.
+    """
+    if path != ":memory:":
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(path)
     con.execute("PRAGMA foreign_keys = ON")
-    con.executescript(SCHEMA_SQL.read_text(encoding="utf-8"))
+    if not _has_schema(con):
+        con.executescript(SCHEMA_SQL.read_text(encoding="utf-8"))
+        con.commit()
     return Session(con=con)
+
+
+def _has_schema(con) -> bool:
+    """Whether this database has already been set up.
+
+    Keyed on `scenario` because it is the one table `schema.sql` also seeds, so
+    its presence means the script ran far enough to matter.
+    """
+    return con.execute(
+        "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'scenario'"
+    ).fetchone()[0] > 0
 
 
 # --------------------------------------------------------------------------
@@ -397,11 +443,97 @@ def plan_run(state, source: str = "forecast", lot_sizing: str = "cost_based") ->
     }
 
 
+def plan_orders(state, limit: int = 100, action: str = None) -> dict:
+    """The planned orders a planner acts on, newest deadline first.
+
+    Separate from `plan.run` rather than folded into it. A plan run takes the
+    better part of a minute and re-reading the list must not cost that again --
+    the planner filters this list, sorts it and comes back to it, and every one
+    of those is a read of rows that are already in the fact table.
+
+    `limit` bounds what crosses the pipe, not what is counted: `total` is the
+    whole list and `shown` is what came back, so a screen showing 100 of 2001
+    can say so instead of implying there are 100.
+    """
+    from .. import orders
+
+    if state.demo is None:
+        raise ValueError(
+            "no dataset loaded; call demo.build for the worked example, or "
+            "import your own data first"
+        )
+
+    rows = orders.order_list(state.con, state.demo)
+    if action is not None:
+        if action not in ("make", "buy"):
+            raise ValueError(f"unknown action {action!r}; expected 'make' or 'buy'")
+        rows = [o for o in rows if o.action == action]
+
+    return {
+        "total": len(rows),
+        "shown": min(limit, len(rows)),
+        "totals": {
+            "make": sum(1 for o in rows if o.action == "make"),
+            "buy": sum(1 for o in rows if o.action == "buy"),
+        },
+        "orders": [
+            {
+                "release_date": o.release_date.isoformat(),
+                "sku_id": o.sku_id,
+                "name": o.name,
+                "action": o.action,
+                "qty": o.qty,
+                "loc_id": o.loc_id,
+                "location": o.location,
+                "lead_time_days": o.lead_time_days,
+            }
+            for o in rows[:limit]
+        ],
+    }
+
+
+def plan_export(state, path: str, action: str = None) -> dict:
+    """Write the whole order list to a file the user named. Returns what it wrote.
+
+    The *whole* list, never the page the screen is showing -- an export that
+    silently carried the 100 rows on screen would be the worst kind of wrong,
+    because the file looks complete.
+
+    Format follows the suffix the user typed in the save dialog rather than a
+    separate control, because a file that will not open in the application whose
+    name is in its extension is a support call.
+
+    The backend writes the file, not the frontend: the shell holds no filesystem
+    permission and the save dialog returns a path, not a handle.
+    """
+    from .. import orders
+
+    if state.demo is None:
+        raise ValueError("no dataset loaded; nothing to export")
+
+    rows = orders.order_list(state.con, state.demo)
+    if action is not None:
+        rows = [o for o in rows if o.action == action]
+
+    suffix = Path(path).suffix.lower()
+    writer = {".csv": orders.to_csv, ".xlsx": orders.to_xlsx}.get(suffix)
+    if writer is None:
+        raise ValueError(
+            f"cannot write {suffix or 'a file with no extension'}; "
+            "name the file .xlsx or .csv"
+        )
+
+    written = writer(rows, path)
+    return {"path": str(path), "rows": written, "format": suffix.lstrip(".")}
+
+
 METHODS = {
     "ping": ping,
     "demo.build": demo_build,
     "scenario.growth": scenario_growth,
     "plan.run": plan_run,
+    "plan.orders": plan_orders,
+    "plan.export": plan_export,
     "import.check": import_check,
     "import.columns": import_columns,
     "mapping.inspect": mapping_inspect,

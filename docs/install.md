@@ -165,6 +165,14 @@ at all.
    confirm before importing anything. It will leave a column unmapped rather than
    guess — see [`docs/mapping.md`](mapping.md) for why that trade is deliberate.
 
+4. **Run the plan.** It takes the better part of a minute on 200 items and
+   reports progress while it works.
+5. **Save the list.** The plan ends with the orders to place — item, quantity
+   and the date each one has to go out — which you can filter to what the plant
+   makes or what has to be bought, and save as `.xlsx` or `.csv` to send on.
+   They are suggestions to act on, not purchase orders: raising and receiving an
+   order stays in the system you already run. See [`docs/orders.md`](orders.md).
+
 Nothing is uploaded at any step. There is no account and no sign-in screen.
 
 ## What it installs, and what it does not do

@@ -314,11 +314,24 @@ after seeing a result cannot masquerade as one written before it.
   `--unmet backorder` the naive policy serves 58% on time and 99.5% eventually,
   which is why the headline fill rate remains *on-time* under both rules and the
   softer number is reported under its own name rather than blended in.
-* **The desktop shell is not compiled in this environment.** The engines are
-  tested to death; the Tauri wrapper is checked only by cross-file rules — the
-  path the shell resolves against the path the bundle installs, the plugins the
-  frontend calls against the crates that provide them. That is a different thing
-  from a build, and CI is the only place it can be settled.
+* **The desktop shell is not compiled in this environment**, and the first time
+  anyone launched it, it was broken. The Tauri wrapper is checked here only by
+  cross-file rules — the path the shell resolves against the path the bundle
+  installs, the plugins the frontend calls against the crates that provide them.
+  A CI-built Windows installer was eventually downloaded, checksum-verified,
+  extracted and run: the window opened and rendered, and the status bar read
+  `starting…` forever, because the backend's opening line was emitted before the
+  interface had attached its listeners and was dropped on every launch. Nothing
+  in either file was wrong; the *order* was. It is fixed and buffered now, and
+  the fix has not itself been launched — see [`docs/decisions.md`](docs/decisions.md).
+  **Cross-file rules cannot see a race, and this is the standing reason to keep
+  launching the thing.**
+* **A planner cannot overrule the plan.** The order list says what the
+  arithmetic wants; a planner who knows a customer committed verbally, or that a
+  machine is down on Tuesday, has nowhere to put that. The mechanism is designed
+  — the textbook firm planned order, with provenance beside the fact rather than
+  inside it — and deliberately not yet built, in
+  [`docs/overrides.md`](docs/overrides.md).
 * **Inventory value uses synthetic costs.** Working capital is now reported
   alongside units, but the demo's unit costs are generated, so the *ratios*
   between policies mean something and the absolute figures do not.
@@ -367,6 +380,8 @@ quietly excluding the hard ones is how a portfolio average gets improved.
 | [`docs/decisions.md`](docs/decisions.md) | What was decided, and what was rejected and why |
 | [`docs/contracts/facts.md`](docs/contracts/facts.md) | The fact grain and the sparse rule |
 | [`docs/netreq.md`](docs/netreq.md) | Time-phased MRP |
+| [`docs/orders.md`](docs/orders.md) | The order list a planner acts on, and the gap it closed |
+| [`docs/overrides.md`](docs/overrides.md) | **Designed, not built** — letting a planner overrule the plan |
 | [`docs/forecast.md`](docs/forecast.md) | Model selection and MASE, including its limits |
 | [`docs/rccp.md`](docs/rccp.md) | Rough-cut capacity, and what it does not yet prove |
 | [`docs/capacity-sizing.md`](docs/capacity-sizing.md) | How the demo plant was sized, written before it was run |

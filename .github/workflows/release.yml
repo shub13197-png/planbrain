@@ -130,6 +130,24 @@ jobs:
           done
           cat SHA256SUMS.txt
 
+      # Upload BEFORE the gate, so a rejected build is still one you can open.
+      #
+      # The gate used to run first, and a build it failed uploaded nothing --
+      # which meant the only evidence of a 330 MB MSI was the build log. Two
+      # diagnoses were then spent on that log: WebView2 was ruled out because a
+      # grep of the log found only Rust crate names, and the actual offline
+      # runtime installer was sitting inside the MSI the whole time. Absence in
+      # a log is not absence in an artifact, and you cannot search an artifact
+      # that was never uploaded.
+      #
+      # The gate still fails the build. This only changes whether the thing it
+      # rejected is available to look at.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: planbrain-${{ matrix.triple }}
+          path: dist/*
+          if-no-files-found: error
+
       - name: Installers against the committed budget
         # This gate did not exist until the first installers were produced, and
         # the first Windows MSI came out at 330 MB against a 150 MB budget with
@@ -137,12 +155,6 @@ jobs:
         # is one input to an installer; the installer budget had nothing
         # measuring it at all.
         run: python packaging/check_installer_size.py dist
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: planbrain-${{ matrix.triple }}
-          path: dist/*
-          if-no-files-found: error
 
   publish:
     needs: build

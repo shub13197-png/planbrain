@@ -35,6 +35,12 @@ ALLOWED = {
     "tests/test_scenario.py",
     "tests/test_access.py",
     "tests/test_fact_access_lint.py",
+    # The order list against storage. `read_facts` densifies for the keys it is
+    # given, so checking the list through the accessor would agree with it about
+    # any key it failed to ask for -- a whole location missing from the list
+    # would pass. Counting rows in the table is the only check that cannot be
+    # fooled that way, which is the same exemption the storage tests above hold.
+    "tests/test_orders.py",
 }
 
 #: The invariant that matters: no module that computes a plan number is exempt.

@@ -22,6 +22,8 @@ import ast
 import json
 import re
 from pathlib import Path
+
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -146,6 +148,7 @@ CAPABILITY = json.loads(
 GRANTED = {
     "core:default": "a window, and the invoke bridge to our one command",
     "dialog:allow-open": "choosing a spreadsheet to import",
+    "dialog:allow-save": "naming the file the order list is exported to",
 }
 
 
@@ -169,12 +172,23 @@ def test_no_shell_execution_permission_is_granted():
     assert "tauri_plugin_shell" not in MAIN_RS
 
 
-def test_nothing_is_permitted_to_write_outside_the_application_directory():
-    """`dialog:allow-save` and the filesystem plugin are both absent. The import
-    flow reads a file the user chose; it never writes one back."""
+def test_the_frontend_cannot_touch_the_filesystem_itself():
+    """No `fs:` permission, so the interface can neither read nor write a file.
+
+    **This assertion was narrower until the order list shipped.** It used to
+    also forbid `dialog:allow-save`, on the reasoning that the application only
+    ever read files. That stopped being true the moment a planner could export
+    the plan, and the permission is now granted deliberately -- see
+    `docs/decisions.md`.
+
+    What did NOT change is the property worth protecting. A save dialog returns
+    a *path*, not a handle: the user names a file and the backend writes it.
+    Granting `fs:` would let the frontend write anywhere on its own, and that is
+    still refused. The distinction is the whole point of keeping this test
+    rather than deleting it with the rule it used to encode.
+    """
     for permission in CAPABILITY["permissions"]:
         assert not permission.startswith("fs:"), permission
-        assert permission != "dialog:allow-save"
 
 
 def test_the_capability_applies_to_a_window_that_exists():
@@ -199,6 +213,84 @@ def test_the_frontend_invokes_only_commands_the_shell_exposes():
     assert handler, "main.rs registers no commands"
     registered = {name.strip() for name in handler.group(1).split(",") if name.strip()}
     assert called <= registered, f"not registered in Rust: {sorted(called - registered)}"
+
+
+def test_the_interface_script_parses():
+    """Nothing else in this repo ever parses the frontend.
+
+    `index.html` carries 500 lines of module JavaScript that no test, linter or
+    build step reads: `tauri build` copies `dist/` verbatim. A syntax error in
+    it therefore ships, and arrives as a blank window with the failure only in a
+    devtools console the user does not have open.
+
+    Skipped where node is absent -- the offline container has no node, and the
+    GitHub runners have it preinstalled, so this runs where the shell is built.
+    """
+    import shutil
+    import subprocess
+    import tempfile
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("no node here; this runs on the runners, which have it")
+
+    script = re.search(r'<script type="module">(.*?)</script>', INDEX, re.S)
+    assert script, "index.html no longer carries a module script"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "frontend.mjs"
+        path.write_text(script.group(1), encoding="utf-8")
+        done = subprocess.run([node, "--check", str(path)],
+                              capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+
+
+def _events_emitted_by_the_shell() -> set:
+    """Every event name the Rust sends to the interface.
+
+    Both spellings: `handle.emit("x", ...)` and the `deliver(..., "x", ...)`
+    wrapper that buffers a line until the interface is listening.
+    """
+    return set(re.findall(r'\.emit\(\s*"([^"]+)"', MAIN_RS)) | set(
+        re.findall(r'deliver\([^;]*?"([a-z-]+)"', MAIN_RS, re.S)
+    )
+
+
+def test_every_event_the_shell_emits_is_handled_by_the_interface():
+    """An emitted event nobody listens for is silence, not an error.
+
+    `backend-exit` was emitted from the day the reader thread was written and
+    the frontend never listened for it: a backend that died mid-session left the
+    window waiting for a reply that was never coming, with nothing on screen to
+    say so. Nothing in either file was wrong on its own, which is why this is
+    asserted across them.
+    """
+    handled = set(re.findall(r'"([a-z-]+)"\s*:\s*on[A-Z]\w*', INDEX))
+    missing = _events_emitted_by_the_shell() - handled
+    assert not missing, f"emitted by the shell, ignored by the interface: {sorted(missing)}"
+
+
+def test_the_interface_listens_before_it_drains_the_backlog():
+    """Ordering, because this is the bug that shipped and nothing caught it.
+
+    The backend is spawned in `setup()` and prints its `ready` line at once,
+    long before this script runs -- so the shell buffers early output and hands
+    it over when `drain_backend` is called. Draining *before* the listeners are
+    attached would lose every line that arrives in between, which is the exact
+    fault the buffer exists to fix, reintroduced one line higher up.
+
+    Found by launching the installed application: the status bar read
+    "starting..." indefinitely while the backend was up and answering.
+    """
+    listen_at = INDEX.find("listen(event,")
+    drain_at = INDEX.find('invoke("drain_backend")')
+    assert listen_at != -1, "the interface no longer attaches listeners in a loop"
+    assert drain_at != -1, "the interface no longer drains the shell's backlog"
+    assert listen_at < drain_at, "the backlog is drained before the listeners exist"
+    assert "await Promise.all" in INDEX, (
+        "listen() is asynchronous; without awaiting every one of them the drain "
+        "can still run first"
+    )
 
 
 #: The JS namespace a plugin exposes, and the crate that has to be present and

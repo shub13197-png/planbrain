@@ -29,6 +29,7 @@ RCCP = "docs/rccp.md"
 FORECAST = "docs/forecast.md"
 HAULPLAN = "docs/haulplan.md"
 DEMOD = "docs/demo.md"
+ORDERS = "docs/orders.md"
 
 
 @dataclass(frozen=True)
@@ -94,6 +95,19 @@ FIGURES = (
     Figure("sb_lumpy_tuned", 0.937, "93.7%", (SERVICE,), tolerance=0.002),
     Figure("sb_capped_fitted", 0.970, "**97.0% / 1,272**", (SERVICE,),
            tolerance=0.002),
+
+    # --- the order list -------------------------------------------------
+    # The size of the answer the application used to discard. Published on the
+    # path a user actually clicks -- forecast, then net -- rather than on the
+    # cheaper naive replay the rest of this register runs, because a figure
+    # quoted from a path nobody takes is a figure about nothing. Replaying last
+    # year instead gives 1843, and the difference is the point.
+    Figure("orders_total", 2001, "**2001 planned order releases**", (ORDERS,)),
+    Figure("orders_receipts", 2070, "planned_order_receipt  2070", (ORDERS,),
+           note="the receipt/release gap: _offset merges releases onto a "
+                "working bucket, which is why the list reports releases"),
+    Figure("orders_make", 1822, "1822 make lines", (ORDERS,)),
+    Figure("orders_buy", 179, "179 buy lines", (ORDERS,)),
 
     # --- capacity -------------------------------------------------------
     Figure("rccp_utilisation", 0.85, "85% overall utilisation", (README,),

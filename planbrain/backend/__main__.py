@@ -34,11 +34,12 @@ from planbrain.offline import engage
 
 engage()  # noqa: E402 -- must precede every other import. Do not move.
 
+import argparse  # noqa: E402
 import json  # noqa: E402
 import sys  # noqa: E402
 import traceback  # noqa: E402
 
-from planbrain.backend.api import METHODS, session  # noqa: E402
+from planbrain.backend.api import METHODS, default_database, session  # noqa: E402
 
 PROTOCOL_VERSION = 1
 
@@ -70,15 +71,26 @@ def _error(request_id, kind, message, trace=None) -> dict:
     return {"id": request_id, "ok": False, "error": error}
 
 
-def main(stdin=None, stdout=None) -> int:
+def main(stdin=None, stdout=None, db=None) -> int:
     stdin = stdin if stdin is not None else sys.stdin
     stdout = stdout if stdout is not None else sys.stdout
-    state = session()
+    # A FILE, not `:memory:`.
+    #
+    # This ran in memory until the application was launched and someone asked
+    # what happens when the window closes: the imported history, the column
+    # mapping and the plan were all discarded, silently, while
+    # `docs/install.md` promised in three places that the data lives in a file
+    # the user can copy and delete. `--db :memory:` remains available for a
+    # throwaway run, which is what the default used to be for everybody.
+    state = session(str(db if db is not None else default_database()))
 
     # Announced before the first request so the shell can fail fast on a version
-    # mismatch rather than on a confusing method error later.
+    # mismatch rather than on a confusing method error later. The database is
+    # named here because "where did my data go" is otherwise unanswerable from
+    # inside the application.
     _write(stdout, {"ready": True, "protocol": PROTOCOL_VERSION,
-                    "offline": True, "methods": sorted(METHODS)})
+                    "offline": True, "methods": sorted(METHODS),
+                    "database": _db_path(state)})
 
     for line in stdin:
         line = line.strip()
@@ -114,5 +126,23 @@ def _write(stream, payload) -> None:
     stream.flush()
 
 
+def _db_path(state) -> str:
+    """Where this session's database actually is, asked of SQLite itself.
+
+    Reported rather than reconstructed, so the line the interface displays is
+    the file that is genuinely open. `PRAGMA database_list` gives an empty
+    string for an in-memory database, which is exactly the right thing to say.
+    """
+    row = state.con.execute("PRAGMA database_list").fetchone()
+    return row[2] if row and row[2] else ":memory:"
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # A throwaway database is one flag away, and is no longer what everybody
+    # silently got.
+    parser = argparse.ArgumentParser(description="Planning Brain backend")
+    parser.add_argument("--db", default=None,
+                        help="database file, or :memory: for a session that "
+                             "keeps nothing (default: the per-user file named "
+                             "in docs/install.md)")
+    raise SystemExit(main(db=parser.parse_args().db))
