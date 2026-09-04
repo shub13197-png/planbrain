@@ -60,6 +60,28 @@ def assert_writable(con, scenario_id: int) -> None:
         )
 
 
+#: Keys per SELECT. The predicate is one OR-ed clause per key, so the query's
+#: parse tree grows with the portfolio and the database eventually refuses it:
+#: SQLite raises "Expression tree is too large (maximum depth 1000)" at roughly
+#: 500 two-column keys.
+#:
+#: **Found on real data.** The demo asks for 222 series and every test passed;
+#: a real retail log with 2947 stock codes did not, and a small manufacturer
+#: with three thousand part numbers is entirely ordinary. Until this chunked,
+#: the application could not read a plan for one.
+#:
+#: 200 is well inside every engine's limit rather than tuned to any one of
+#: them -- PostgreSQL has its own bound and this file is portable by contract.
+#: The cost is one extra round trip per 200 keys against a local file.
+KEYS_PER_QUERY = 200
+
+
+def _in_chunks(items, size):
+    """Successive slices of ``items``, preserving order."""
+    for start in range(0, len(items), size):
+        yield items[start : start + size]
+
+
 def read_facts(
     con,
     table: str,
@@ -87,22 +109,24 @@ def read_facts(
     if not keys:
         return []
 
-    where_key = " OR ".join(
-        "(" + " AND ".join(f"{c} = ?" for c in key_cols) + ")" for _ in keys
-    )
-    params = [scenario_id, measure, spine[0].isoformat(), spine[-1].isoformat()]
-    for k in keys:
-        params.extend(k)
-    sql = (
-        f"SELECT {', '.join(key_cols)}, bucket_date, qty FROM {table}"
-        f" WHERE scenario_id = ? AND measure = ?"
-        f"   AND bucket_date BETWEEN ? AND ?"
-        f"   AND ({where_key})"
-    )
-    sparse = {
-        (tuple(r[: len(key_cols)]), _as_date(r[len(key_cols)])): r[-1]
-        for r in con.execute(sql, params)
-    }
+    sparse = {}
+    for chunk in _in_chunks(keys, KEYS_PER_QUERY):
+        where_key = " OR ".join(
+            "(" + " AND ".join(f"{c} = ?" for c in key_cols) + ")" for _ in chunk
+        )
+        params = [scenario_id, measure, spine[0].isoformat(), spine[-1].isoformat()]
+        for k in chunk:
+            params.extend(k)
+        sql = (
+            f"SELECT {', '.join(key_cols)}, bucket_date, qty FROM {table}"
+            f" WHERE scenario_id = ? AND measure = ?"
+            f"   AND bucket_date BETWEEN ? AND ?"
+            f"   AND ({where_key})"
+        )
+        sparse.update({
+            (tuple(r[: len(key_cols)]), _as_date(r[len(key_cols)])): r[-1]
+            for r in con.execute(sql, params)
+        })
 
     # Densify: the spine is the source of truth for which buckets exist.
     return [

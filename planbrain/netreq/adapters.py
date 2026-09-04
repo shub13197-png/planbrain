@@ -19,6 +19,7 @@ OUTPUT_MEASURES = (
     "projected_on_hand",
     "planned_order_receipt",
     "planned_order_release",
+    "past_due_release",
 )
 
 
@@ -144,6 +145,15 @@ def write_plans(con, plans, *, scenario_id: int, horizon_start, horizon_end, gro
             series_by_measure[measure].extend(
                 Fact(key, bucket, qty) for bucket, qty in zip(spine, values)
             )
+        # Past-due releases are a sparse list of exceptions rather than a dense
+        # series, and they are dated at the bucket the material is needed. The
+        # engine already computed them; until this they were returned to a
+        # caller that dropped them.
+        for exception in plan.exceptions:
+            if exception.kind == "past_due_release":
+                series_by_measure["past_due_release"].append(
+                    Fact(key, spine[exception.bucket_index], exception.qty)
+                )
 
     return {
         measure: write_facts(

@@ -30,6 +30,8 @@ FORECAST = "docs/forecast.md"
 HAULPLAN = "docs/haulplan.md"
 DEMOD = "docs/demo.md"
 ORDERS = "docs/orders.md"
+NETREQ = "docs/netreq.md"
+STATUS = "docs/status.md"
 
 
 @dataclass(frozen=True)
@@ -108,6 +110,16 @@ FIGURES = (
                 "working bucket, which is why the list reports releases"),
     Figure("orders_make", 1822, "1822 make lines", (ORDERS,)),
     Figure("orders_buy", 179, "179 buy lines", (ORDERS,)),
+
+    # --- the risk list ----------------------------------------------------
+    # The exceptions netreq computed and threw away. Published because the
+    # claim "a screen built on negative projections reports nothing wrong" is
+    # only checkable against a plan that has none and is still in trouble --
+    # and because both halves move with the demo's opening stock, which nothing
+    # else would notice.
+    Figure("past_due_orders", 212, "**212 overdue orders across 159 items**",
+           (NETREQ, STATUS),
+           note="past-due releases on the demo plan; shortages are zero"),
 
     # --- capacity -------------------------------------------------------
     Figure("rccp_utilisation", 0.85, "85% overall utilisation", (README,),

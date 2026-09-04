@@ -103,6 +103,22 @@ high side, which under-provisions changeover by 57%. See `rccp.md`.
 |---|---|---|
 | `RESIDUAL_TOLERANCE` | 0.005 | `reconciliation.md`; float noise only, not slack for unexplained difference |
 
+## Benchmark against real demand — 2026-09-05
+
+| constant | value | note |
+|---|---|---|
+| `MOVING_AVERAGE_DAYS` | 84 | twelve weeks. The window a planner without software actually uses -- "take the last three months" -- **committed before the comparison was run**, not tuned until this product won |
+| `LEAD_TIME_DAYS` (benchmark) | 14 | a sales log does not record it. Applied identically to every policy, so it moves every curve together and cannot bias the comparison; it does move the absolute service level |
+| `SERVICE_SWEEP` | 0.50, 0.75, 0.90, 0.95, 0.99 | the safety settings swept to trace the curve. 0.50 gives z = 0 and no safety stock, which is where the demand signal is all a policy has |
+| `MIN_HISTORY_DAYS` / `MIN_DEMAND_EVENTS` | 365 / 12 | eligibility bar for a series, committed before the run. Everything clearing it is kept -- no sampling by size, which would drop the intermittent half |
+| `HOLDOUT_DAYS` | 90 | never seen at fit time |
+
+## Storage — 2026-09-05
+
+| constant | value | note |
+|---|---|---|
+| `KEYS_PER_QUERY` | 200 | keys per SELECT in `read_facts`. The predicate is one OR-ed clause per key, and SQLite refuses the parse tree at roughly 500 two-column keys. **Found on real data at 2,947 stock codes**; the demo asks for 222, which is why nothing caught it. 200 is inside every engine's limit rather than tuned to SQLite's |
+
 ## Known live consistency requirements
 
 Things that must agree, and where they are checked:
@@ -116,3 +132,5 @@ Things that must agree, and where they are checked:
 | `TARGET_UTILISATION` ↔ sized capacity | `test_capacity_lands_on_the_stated_target_utilisation` |
 | truck capacities ↔ `TRUCKLOAD_KG` | fleet sized from payload distribution; `_size_fleet` raises if the heaviest payload exceeds every class |
 | `TRUCK_CLASSES` ↔ `MIN_SMALL_SHARE` | `test_a_third_of_the_fleet_cannot_take_a_full_load` |
+| `KEYS_PER_QUERY` ↔ any portfolio size | `test_reading_a_portfolio_larger_than_the_query_limit_works` |
+| benchmark figures ↔ the prose quoting them | `tools/published.py`, `test_published_numbers.py` |

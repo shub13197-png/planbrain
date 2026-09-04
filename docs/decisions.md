@@ -1863,3 +1863,124 @@ open.
 offline container has none, the GitHub runners have it preinstalled. Cheap, and
 it is the closest thing to a runtime check this suite has for the half of the
 application written in JavaScript.
+
+## 2026-09-05 — First run against real data, and what it broke
+
+Every figure this project has published came from a dataset we wrote, and the
+README says so at the top: *the only cure is real data*. The cure is now
+applied. UCI Online Retail II — a UK gift retailer's transaction log, 1,035,621
+invoice lines, 4,873 stock codes, of which 2,947 clear an eligibility bar
+committed before the run. No login, CC BY 4.0, archive checksum-pinned in the
+fetch script.
+
+**Two product faults that a 222-series demo could not reach.**
+
+`read_facts` built one OR-ed predicate per key, so the query's parse tree grew
+with the portfolio and SQLite refused it: *Expression tree is too large (maximum
+depth 1000)*, at roughly 500 two-column keys. The demo asks for 222. **A small
+manufacturer with three thousand part numbers is entirely ordinary, and until
+this chunked, the application could not read a plan for one.** Fixed at 200 keys
+per SELECT — inside every engine's limit rather than tuned to SQLite's, because
+this file is portable by contract.
+
+The second is worse, because it was a screen that lied. `alerts.shortages` reads
+negative `projected_on_hand`, and running the planner over 2,947 real stock
+codes returned **zero shortages**. `netreq` dates a planned receipt at the
+bucket the material is needed, so the projection balances even when the order
+covering it should have gone out weeks ago: infeasibility surfaces as a
+*past-due release*, which the first version of `alerts` deliberately excluded on
+the grounds that bucket-zero releases are indistinguishable.
+
+They are indistinguishable *in the release series*. They are perfectly
+distinguishable if the engine writes them down, which it now does:
+`past_due_release`, dated at the bucket the material is needed rather than at
+the bucket-zero release, because dating them all at zero would merge every
+overdue order into one number with no date to chase. On the demo the plan
+carries **212 overdue orders across 159 items**, and the application had been
+reporting nothing wrong.
+
+**A "what is going to go wrong" screen that says "nothing runs out" on that plan
+is worse than no screen.** Shortages and past-due releases are reported as two
+lists with two counts and deliberately no combined total: "we will run out" and
+"we are already late" are different questions and a sum would answer neither.
+
+## 2026-09-05 — What the benchmark says, and the two ways it could have lied
+
+`docs/benchmark.md`. To hold the same fill rate as this product, the spreadsheet
+carries **8–30% more stock** and a current ERP min/max carries **12–17% more**.
+The margin is widest where inventory is tightest, which is where a
+cash-constrained business operates, and narrows as either side buys its way up
+the curve.
+
+**Two methodological faults were found in this harness by running it**, and both
+would have produced a flattering number.
+
+*The first was mine.* The sweep ran on days of cover, and in that mode
+`simulate.compare` gives the forecast policy `mean × days` of safety stock while
+the reorder point keeps its own textbook one-sigma term — which does not move.
+The first run reported `reorder_point` at exactly 77.2% and 132.5 units at every
+one of five settings. It was not on the curve at all, and a moving policy
+compared against a stationary one is not a comparison. Swept on the service
+level instead, where every policy receives `z(α)·σ·√(L+R)` and they move
+together.
+
+*The second was in the new baseline.* `moving_average_cover` triggered at
+`rate × protection`, excluding its safety stock, so the safety it was handed was
+never actually held: its curve saturated at 60.5% and would not move at any
+setting. That reads as *the spreadsheet cannot buy service*, which is a
+conclusion, and the truth was that our implementation of the spreadsheet was
+refusing to spend what it was given. It is now the same (s, S) shape as
+`reorder_point`, differing **only** in the demand estimate — a twelve-week
+moving average against a full-history mean — so the result is about two ways of
+reading demand rather than about two implementations.
+
+**Rejected: reporting only the settings where we win.** The cheapest setting,
+z = 0, has every incumbent serving more than we do, and that row is in the
+table. A forecast-driven order-up-to rule holding no safety stock has no buffer
+against its own error while a reorder point's floor keeps ordering regardless.
+Nobody runs at z = 0; leaving the row out is how benchmarks lie.
+
+**The real result disagrees with our own synthetic retraction.** The README
+retracted "lumpy demand is where we excel" when a full-portfolio run on the
+generated data gave a tuned reorder point 93.7% against our 92.8%. On real data
+lumpy is where the margin is *largest*. One dataset does not overturn that, and
+this is explicitly not treated as an un-retraction: both are published, the
+retraction stays, and what would settle it is a second and third real dataset
+from manufacturing rather than retail.
+
+**These figures are not CI-pinned, and that is stated in the document.** Every
+README number is checked against a fresh computation on every run; these cannot
+be, because the dataset is a 45 MB download CI does not have. Reproducibility
+rests on the pinned archive checksum and the committed constants. That is a
+weaker guarantee than the rest of this repository offers and it is said plainly
+rather than left to be assumed.
+
+**The dataset boundary held.** `tools/benchmark.py` named the fetch script's
+path in its docstring and `test_no_application_code_shells_out_to_a_dataset_script`
+failed. The check was right and the design was wrong: the benchmark reads a
+directory it is given and has no business knowing how the data got there. The
+two-step instruction moved to `datasets/README.md`, where a human joins the
+halves and no code does.
+
+## 2026-09-05 — The interface can be rendered without compiling the shell
+
+`tools/render_ui.py`. The real `desktop/dist/index.html`, with
+`window.__TAURI__` replaced by a stub that replays **real replies from the real
+API** — captured by calling the methods, not hand-written fixtures.
+
+Until this, nothing exercised the rendering path at all.
+`tests/test_desktop_shell.py` asserts that the page parses and that it only
+calls backend methods which exist; neither is the same as it drawing the right
+thing, and there is no Rust toolchain here to find out the other way.
+
+It immediately paid for itself twice. The status bar renders **Offline** rather
+than sitting at `starting…`, which is the frontend half of the dropped-first-line
+fix verified — the Rust half still needs CI. And the first render came back with
+`scenario.growth` in red, because the harness had not captured that method: the
+interface calls it before `plan.run`, which is a call order nothing had written
+down.
+
+**The stub is deliberately thin.** It answers `call_backend` from a table of
+captured replies and `drain_backend` from the captured ready frame. If it grew
+logic it would stop being a render of the application and become a render of the
+stub.

@@ -21,6 +21,19 @@ that distinction is kept.
 | script | dataset | licence note |
 |---|---|---|
 | `fetch_m5.py` | M5 Forecasting — Accuracy (Kaggle) | competition rules **restrict redistribution**, so we fetch rather than ship a derived copy |
+| `fetch_online_retail.py` | UCI Online Retail II — **no login needed** | CC BY 4.0, so redistribution would be allowed; we fetch anyway because 45 MB of xlsx does not belong in a git history |
+
+## The two-step run
+
+`tools/benchmark.py` is inside the application boundary and reads a directory it
+is given. It does not know how the data got there, and naming a script in this
+directory from inside `tools/` is what `tests/test_dataset_boundary.py` forbids
+— so the two halves are joined here, by a human, and nowhere in code:
+
+```bash
+python datasets/fetch_online_retail.py --out data/online-retail
+python -m tools.benchmark --data data/online-retail
+```
 
 ## Using it
 

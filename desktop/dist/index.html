@@ -106,8 +106,22 @@
 </div>
 <div id="planResult"></div>
 
+<div id="riskSection" hidden>
+<h2>4 &middot; What is going to go wrong</h2>
+<div class="row">
+  <label>Sort by
+    <select id="riskOrder">
+      <option value="date">soonest first</option>
+      <option value="size">biggest shortage first</option>
+    </select>
+  </label>
+  <span class="note" id="riskNote"></span>
+</div>
+<div id="riskTable"></div>
+</div>
+
 <div id="ordersSection" hidden>
-<h2>4 &middot; What to order</h2>
+<h2>5 &middot; What to order</h2>
 <div class="row">
   <label>Show
     <select id="orderFilter">
@@ -354,6 +368,85 @@ function renderPlan(r) {
     </table></div>` + caveat + suppressed;
 }
 
+// --- what is going to go wrong ---------------------------------------------
+// netreq builds an exception for every projected shortage and the application
+// never showed one of them. This is the screen a planner opens the software
+// for: the plan is only interesting where it fails.
+
+async function renderRisk() {
+  let r;
+  try {
+    r = await call("plan.risks",
+      { limit: 50, worst_first: $("riskOrder").value === "size" });
+  } catch (err) {
+    $("riskNote").innerHTML = '<span class="bad">' + (err.message || err) + "</span>";
+    return;
+  }
+
+  $("riskSection").hidden = false;
+  const late = r.past_due, short = r.shortages;
+
+  // Two counts, never one. "We will run out" and "we are already late" are
+  // different questions, and a combined figure would answer neither.
+  const parts = [];
+  if (late.total) {
+    parts.push(`<span class="bad">${num(late.total)} orders already overdue</span>` +
+               ` across ${num(late.items_affected)} items` +
+               ` (${num(late.units)} units, first needed ${late.first_needed})`);
+  }
+  if (short.total) {
+    parts.push(`<span class="bad">${num(short.total)} projected shortages</span>` +
+               ` across ${num(short.items_affected)} items`);
+  }
+  if (!parts.length) {
+    // Said in words. An empty table here and an empty table because nothing
+    // was planned look identical and mean opposite things.
+    $("riskNote").innerHTML =
+      '<span class="offline">Nothing is late and nothing runs out.</span> Every ' +
+      "requirement in the horizon can still be covered in time.";
+    $("riskTable").innerHTML = "";
+    return;
+  }
+  $("riskNote").innerHTML = parts.join(" &middot; ");
+
+  let html = "";
+  if (late.total) {
+    const rows = late.orders.map((o) => `<tr>
+        <td>${o.needed_on}</td>
+        <td>${o.name}</td>
+        <td class="bad">${num(o.qty)}</td>
+        <td>${o.lead_time_days} d</td>
+        <td>${o.location}</td>
+      </tr>`).join("");
+    html += `<p class="note"><b>Already overdue</b> &mdash; the lead time is
+       longer than the time left, so the order needed to cover this date should
+       already have gone out. Showing ${num(late.shown)} of ${num(late.total)}.</p>
+      <div class="scroll"><table>
+        <tr><th>needed on</th><th>item</th><th>quantity</th><th>lead time</th>
+            <th>at</th></tr>
+        ${rows}
+      </table></div>`;
+  }
+  if (short.total) {
+    const rows = short.shortages.map((s) => `<tr>
+        <td>${s.bucket_date}</td>
+        <td>${s.name}</td>
+        <td class="bad">${num(s.short_by)}</td>
+        <td>${s.location}</td>
+      </tr>`).join("");
+    html += `<p class="note"><b>Projected to run out</b> &mdash; a day the
+       projected balance goes below zero. Showing ${num(short.shown)} of
+       ${num(short.total)}.</p>
+      <div class="scroll"><table>
+        <tr><th>runs out on</th><th>item</th><th>short by</th><th>at</th></tr>
+        ${rows}
+      </table></div>`;
+  }
+  $("riskTable").innerHTML = html;
+}
+
+$("riskOrder").onchange = renderRisk;
+
 // --- the order list --------------------------------------------------------
 // The reason this section exists: the run computed 2001 planned orders and the
 // screen showed a utilisation percentage. A planner cannot act on a percentage,
@@ -433,6 +526,7 @@ $("runPlan").onclick = async () => {
   if (!dataLoaded) return;
   $("runPlan").disabled = true;
   $("planResult").innerHTML = "";
+  $("riskSection").hidden = true;
   $("ordersSection").hidden = true;
   try {
     await call("scenario.growth", {
@@ -446,6 +540,7 @@ $("runPlan").onclick = async () => {
     );
     $("planNote").textContent = "Done.";
     renderPlan(r);
+    await renderRisk();
     await renderOrders();
   } catch (err) {
     $("planNote").innerHTML = '<span class="bad">' + (err.message || err) + "</span>";

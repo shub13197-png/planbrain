@@ -75,6 +75,18 @@ INSERT INTO measure (measure, grain, unit, derived, description) VALUES
     ('net_req',               'supply_demand', 'qty',   1, 'Requirement remaining after netting on-hand and scheduled receipts'),
     ('planned_order_receipt', 'supply_demand', 'qty',   1, 'Lot-sized planned receipt, dated when the material is needed'),
     ('planned_order_release', 'supply_demand', 'qty',   1, 'planned_order_receipt offset backward by lead time'),
+    -- Dated at the bucket the material is NEEDED, not at the release that
+    -- covers it: the release is in bucket zero by definition -- that is what
+    -- makes it past due -- and dating them all there would merge every overdue
+    -- order into one number with no due date a planner could chase.
+    --
+    -- Added because infeasibility does not show up in projected_on_hand. netreq
+    -- dates a planned receipt at the bucket it is needed, so the projection
+    -- balances even when the order to cover it should have gone out weeks ago.
+    -- A shortage screen reading only negative projections reported "nothing
+    -- runs out" on a plan over 2,947 real stock codes that carried hundreds of
+    -- overdue releases.
+    ('past_due_release',     'supply_demand', 'qty',   1, 'Quantity whose release date falls before the horizon; the order is already overdue'),
     ('capacity_avail_hours',  'capacity',      'hours', 0, 'Available hours on a resource in this bucket'),
     ('capacity_load_hours',   'capacity',      'hours', 1, 'Hours of load placed on a resource by the plan'),
     -- Fleet measures, defined at build item 9 from what the fairness ledger

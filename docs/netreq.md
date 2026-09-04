@@ -83,6 +83,24 @@ it silently would hide that the order is overdue.
 `negative_on_hand` reports every bucket whose closing balance is below zero, at
 full depth. Never clamped: the magnitude is the size of the problem.
 
+**"Action list" was aspirational until 2026-09-05.** Both exception kinds were
+built here, returned to `netreq.run`, and dropped: the only reader anywhere was
+`tools/make_examples.py`, so the application could report that a plan did not
+fit and could not say which item, on which day. `past_due_release` is now a
+written measure, dated at the bucket the material is *needed* rather than at the
+bucket-zero release that covers it — dating them all at zero would merge every
+overdue order into one number with no date to chase.
+
+**Which of the two actually fires is the opposite of what you would guess.**
+`projected_on_hand` does not go negative on an infeasible plan, because a
+planned receipt is dated at the bucket it is needed: the projection balances
+even when the order covering it should have gone out weeks ago. Running the
+planner over 2,947 real stock codes returned **zero** `negative_on_hand` and a
+long list of past-due releases. The demo plan carries no shortage at all and
+**212 overdue orders across 159 items**. A risk screen built
+on negative projections alone reports "nothing runs out" on a plan with hundreds
+of overdue orders in it.
+
 ## The forecast seam
 
 `resolve_gross_req(..., source=...)` is the named boundary between netting and

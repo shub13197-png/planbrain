@@ -492,6 +492,34 @@ def plan_orders(state, limit: int = 100, action: str = None) -> dict:
     }
 
 
+def plan_risks(state, limit: int = 50, worst_first: bool = False) -> dict:
+    """What is going to go wrong: shortages, and orders that are already late.
+
+    Two lists, never one total. A shortage is "we will run out"; a past-due
+    release is "we should have ordered this weeks ago". They are different
+    questions and the second is the one that fires on a real portfolio -- see
+    `planbrain/alerts.py`.
+
+    Separate from `plan.run` for the same reason `plan.orders` is: the rows are
+    already in the fact table, and re-reading them must not cost another minute
+    of fitting.
+
+    An empty result here is a real answer -- the material plan covers demand --
+    and the interface has to say so in words, because "no shortages" and "no
+    plan has been run" produce the same empty table and mean opposite things.
+    """
+    from .. import alerts
+
+    if state.demo is None:
+        raise ValueError(
+            "no dataset loaded; call demo.build for the worked example, or "
+            "import your own data first"
+        )
+    return alerts.risk_summary(
+        state.con, state.demo, limit=limit, worst_first=worst_first
+    )
+
+
 def plan_export(state, path: str, action: str = None) -> dict:
     """Write the whole order list to a file the user named. Returns what it wrote.
 
@@ -533,6 +561,7 @@ METHODS = {
     "scenario.growth": scenario_growth,
     "plan.run": plan_run,
     "plan.orders": plan_orders,
+    "plan.risks": plan_risks,
     "plan.export": plan_export,
     "import.check": import_check,
     "import.columns": import_columns,

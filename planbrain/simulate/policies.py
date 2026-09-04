@@ -95,6 +95,67 @@ def reorder_point(*, mean_demand, lead_time_days, review_every=1, safety_factor=
     return policy
 
 
+def moving_average_cover(history, *, window_days, lead_time_days, review_every=1,
+                         safety_stock=0.0, order_quantity=None):
+    """Average the last ``window_days``, then hold ``days_of_cover`` of it.
+
+    **This is the spreadsheet.** It is what a planner without planning software
+    does, and it is the thing this product has to beat to be worth installing:
+    take the last three months, average it, keep a month's cover, reorder when
+    you drop below. No model selection, no demand classification, no
+    distribution assumption -- one number and a multiplier, recomputed whenever
+    somebody remembers to.
+
+    Distinct from `reorder_point`, which is the same arithmetic dressed as a
+    textbook (s, S) with a sigma term. This one has no sigma: the cover period
+    *is* the safety stock, chosen by judgement rather than from variability.
+    That is not a strawman -- it is the more common rule in the field precisely
+    because it needs no statistics, and on a smooth fast mover it is genuinely
+    hard to beat.
+
+    Its weakness is structural rather than a matter of tuning. A moving average
+    over an intermittent series returns the mean *rate* -- a SKU that sells 40
+    units every eight weeks averages 0.7 a day -- so the cover target is set
+    against a quantity that is never actually demanded, and the order lands
+    steadily against demand that does not.
+
+    ``history`` is the training window only; the policy never sees the holdout.
+
+    **The trigger includes the safety stock, and the first version of this did
+    not.** With ``reorder_at = rate * protection`` the policy only reordered
+    once stock had fallen through the safety level, so the safety it was given
+    was never actually held: on the first benchmark run its curve saturated at
+    60.5% fill and would not move however much safety it was handed, which reads
+    as "the spreadsheet cannot buy service" when the truth was that this
+    function was refusing to spend it. Same shape as (s, S) because that is
+    what a min/max spreadsheet is.
+
+    Structurally identical to `reorder_point` by design, so that the only thing
+    separating them in a comparison is the demand estimate: a twelve-week moving
+    average here, a full-history mean there. Anything else differing would make
+    the result a fact about two implementations rather than about two ways of
+    reading demand.
+    """
+    window = history[-window_days:] if window_days else history
+    rate = (sum(window) / len(window)) if window else 0.0
+    protection = lead_time_days + review_every
+    reorder_at = rate * protection + safety_stock
+    target = reorder_at + rate * protection
+
+    def policy(t, on_hand, inbound):
+        position = on_hand + inbound
+        if position > reorder_at:
+            return 0.0
+        shortfall = target - position
+        if shortfall <= 0:
+            return 0.0
+        if order_quantity:
+            return math.ceil(shortfall / order_quantity - 1e-9) * order_quantity
+        return shortfall
+
+    return policy
+
+
 def demand_statistics(history: list):
     """Mean and standard deviation of a demand history, over ALL buckets.
 

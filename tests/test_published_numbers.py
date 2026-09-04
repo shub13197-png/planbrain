@@ -121,6 +121,30 @@ def test_the_order_list_is_the_size_the_docs_publish(ordered):
     assert receipts > len(rows)
 
 
+def test_the_risk_list_is_the_size_the_docs_publish(ordered):
+    """Both halves: no shortage, and 212 overdue orders across 159 items.
+
+    The zero matters as much as the 212. The claim in `docs/netreq.md` is that a
+    risk screen reading negative projections alone reports nothing wrong on a
+    plan that is in trouble, and that is only checkable against a plan which has
+    no shortages *and* a long past-due list. Either number moving alone would
+    break the claim without breaking any behaviour test.
+
+    On the `ordered` fixture -- forecast, then net -- because that is the path
+    the application takes by default. Netting against last year's replay instead
+    gives 213, and quoting a figure from a path nobody clicks is the same
+    mistake the order list already made once.
+    """
+    from planbrain import alerts
+
+    _rows, con, demo = ordered
+    assert alerts.shortages(con, demo) == []
+
+    overdue = alerts.past_due(con, demo)
+    assert len(overdue) == by_key("past_due_orders").value
+    assert len({o.sku_id for o in overdue}) == 159
+
+
 def test_the_dataset_is_the_one_the_docs_describe(pipeline):
     _con, demo, _capacity = pipeline
     assert len(demo.parts) == PUBLISHED["parts"]

@@ -58,6 +58,14 @@ The only cure is real data. That is what the importer is for, and
 `--check` will tell you what stands between your spreadsheets and a plan without
 you committing to anything.
 
+**There is now a first run against real data** — a UK retailer's transaction log,
+2,947 stock codes, in [`docs/benchmark.md`](docs/benchmark.md). Against the tools
+a small business actually has, the incumbents need **8–30% more stock to hold the
+same service**, and the margin is widest where inventory is tightest. It also
+**disagrees with the synthetic retraction below** about lumpy demand. One dataset
+does not settle that, and both results stay published until a second and third
+do.
+
 ---
 
 ## Does it actually work? Here is the evidence.
@@ -381,6 +389,8 @@ quietly excluding the hard ones is how a portfolio average gets improved.
 | [`docs/contracts/facts.md`](docs/contracts/facts.md) | The fact grain and the sparse rule |
 | [`docs/netreq.md`](docs/netreq.md) | Time-phased MRP |
 | [`docs/orders.md`](docs/orders.md) | The order list a planner acts on, and the gap it closed |
+| [`docs/benchmark.md`](docs/benchmark.md) | **Real demand, real incumbents** — the service/inventory frontier against a spreadsheet and an ERP's min/max |
+| [`docs/status.md`](docs/status.md) | Where the work stands and what is next — read this first |
 | [`docs/overrides.md`](docs/overrides.md) | **Designed, not built** — letting a planner overrule the plan |
 | [`docs/forecast.md`](docs/forecast.md) | Model selection and MASE, including its limits |
 | [`docs/rccp.md`](docs/rccp.md) | Rough-cut capacity, and what it does not yet prove |

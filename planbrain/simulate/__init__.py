@@ -25,6 +25,7 @@ from .core import Outcome, replay
 from .policies import (
     demand_statistics,
     forecast_order_up_to,
+    moving_average_cover,
     naive_zero_order_up_to,
     reorder_point,
     safety_stock_for_service,
@@ -32,7 +33,14 @@ from .policies import (
 
 TABLE = "fact_supply_demand"
 
-POLICIES = ("forecast", "naive_zero", "reorder_point", "reorder_point_stale")
+POLICIES = ("forecast", "moving_average", "naive_zero", "reorder_point",
+            "reorder_point_stale")
+
+#: Buckets the spreadsheet baseline averages over. Twelve weeks, because "take
+#: the last three months" is the rule a planner without software actually
+#: applies -- not a value tuned until this product won. Committed here and in
+#: docs/constants.md before the comparison was run.
+MOVING_AVERAGE_DAYS = 84
 
 #: Fraction of the training history the stale reorder point is fitted on. It is
 #: then never revisited, which is what an SME incumbent actually looks like: the
@@ -48,6 +56,7 @@ __all__ = [
     "compare",
     "demand_statistics",
     "forecast_order_up_to",
+    "moving_average_cover",
     "naive_zero_order_up_to",
     "reorder_point",
     "replay",
@@ -240,6 +249,16 @@ def compare(
             ),
             "naive_zero": naive_zero_order_up_to(
                 lead_time_days=lead_time, safety_stock=safety
+            ),
+            # The spreadsheet. Given the SAME quantity of safety stock as every
+            # other policy, expressed the way a spreadsheet expresses it -- as
+            # days of cover -- so the only thing that differs between this and
+            # `forecast` is the demand signal. Handing it less safety stock
+            # would win the comparison by rigging it.
+            "moving_average": moving_average_cover(
+                train, window_days=MOVING_AVERAGE_DAYS,
+                lead_time_days=lead_time, safety_stock=safety,
+                order_quantity=lot or None,
             ),
             "reorder_point": reorder_point(
                 mean_demand=mean, lead_time_days=lead_time, demand_sd=sd,
