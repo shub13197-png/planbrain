@@ -1,0 +1,712 @@
+{
+ "_note": "The benchmark run docs/benchmark.md was written from. Committed so the document cannot drift from it without CI failing; regenerating it needs the dataset, which CI does not have. See tests/test_benchmark_claims.py.",
+ "meta": {
+  "evaluated": 2947,
+  "fact_rows": 460811,
+  "history": "2009-12-01 to 2011-12-09",
+  "history_days": 739,
+  "stock_codes_in_file": 4873
+ },
+ "rows": [
+  {
+   "average_on_hand": 25.909839229243772,
+   "by_pattern": {
+    "erratic": [
+     0.8317449894050417,
+     211.26282966073697,
+     13
+    ],
+    "intermittent": [
+     0.3279066093364644,
+     2.3118091177161193,
+     162
+    ],
+    "lumpy": [
+     0.5092520354754878,
+     26.701236662100325,
+     2274
+    ]
+   },
+   "fill_rate": 0.4989680213336186,
+   "inventory_value": 134790.69528207884,
+   "policy": "forecast",
+   "series": 2449,
+   "service_level": 0.5,
+   "units_short": 791800.4115057873,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 44.2439002654315,
+   "by_pattern": {
+    "erratic": [
+     0.8581833528737801,
+     522.2547053699597,
+     13
+    ],
+    "intermittent": [
+     0.3769477715193522,
+     3.015309033774,
+     162
+    ],
+    "lumpy": [
+     0.6062359830658851,
+     44.89507042330839,
+     2274
+    ]
+   },
+   "fill_rate": 0.5924061037424733,
+   "inventory_value": 233886.63953304233,
+   "policy": "moving_average",
+   "series": 2449,
+   "service_level": 0.5,
+   "units_short": 684740.7609509135,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 13.947107568992509,
+   "by_pattern": {
+    "erratic": [
+     0.20220836247575288,
+     75.49766372986713,
+     13
+    ],
+    "intermittent": [
+     0.16534474717097253,
+     1.2155112191282031,
+     162
+    ],
+    "lumpy": [
+     0.27786848376432927,
+     14.556513576942255,
+     2274
+    ]
+   },
+   "fill_rate": 0.270023474819913,
+   "inventory_value": 80118.5452524396,
+   "policy": "naive_zero",
+   "series": 2449,
+   "service_level": 0.5,
+   "units_short": 1264980.8151001541,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 55.77646462264603,
+   "by_pattern": {
+    "erratic": [
+     0.9369448151934084,
+     718.3813309101445,
+     13
+    ],
+    "intermittent": [
+     0.46821918981160815,
+     3.6132495671373883,
+     162
+    ],
+    "lumpy": [
+     0.6894876211424723,
+     56.326026833971284,
+     2274
+    ]
+   },
+   "fill_rate": 0.676164410708443,
+   "inventory_value": 308753.81672384904,
+   "policy": "reorder_point",
+   "series": 2449,
+   "service_level": 0.5,
+   "units_short": 609095.4345146379,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 58.80612704224699,
+   "by_pattern": {
+    "erratic": [
+     0.9144024634687979,
+     799.6787823914942,
+     13
+    ],
+    "intermittent": [
+     0.4473211071578324,
+     4.232470792437156,
+     162
+    ],
+    "lumpy": [
+     0.5935163618303255,
+     59.15501200316775,
+     2274
+    ]
+   },
+   "fill_rate": 0.5855489825180986,
+   "inventory_value": 315633.5284727227,
+   "pattern_mix": {
+    "erratic": 13,
+    "intermittent": 194,
+    "lumpy": 2740
+   },
+   "policy": "reorder_point_stale",
+   "series": 2449,
+   "service_level": 0.5,
+   "units_short": 801698.2857387434,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 46.28033253996862,
+   "by_pattern": {
+    "erratic": [
+     0.9219251692537452,
+     377.7424180144298,
+     13
+    ],
+    "intermittent": [
+     0.5098610972172622,
+     3.5666119912185463,
+     162
+    ],
+    "lumpy": [
+     0.6861640837293975,
+     47.7319583338699,
+     2274
+    ]
+   },
+   "fill_rate": 0.6757532263577563,
+   "inventory_value": 237838.36754126655,
+   "policy": "forecast",
+   "series": 2449,
+   "service_level": 0.75,
+   "units_short": 584633.1993006758,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 71.32440627038781,
+   "by_pattern": {
+    "erratic": [
+     0.9249076309166746,
+     762.3655321544776,
+     13
+    ],
+    "intermittent": [
+     0.5253176784242697,
+     4.25838813565629,
+     162
+    ],
+    "lumpy": [
+     0.7493072719394797,
+     72.79421389142604,
+     2274
+    ]
+   },
+   "fill_rate": 0.7354226212727747,
+   "inventory_value": 374493.1472664771,
+   "policy": "moving_average",
+   "series": 2449,
+   "service_level": 0.75,
+   "units_short": 499225.6365020383,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 25.735162872474923,
+   "by_pattern": {
+    "erratic": [
+     0.47705724097248825,
+     94.50813688468037,
+     13
+    ],
+    "intermittent": [
+     0.3310346999118834,
+     1.8795437785226827,
+     162
+    ],
+    "lumpy": [
+     0.5300968532415269,
+     27.097915223594654,
+     2274
+    ]
+   },
+   "fill_rate": 0.5166474519353204,
+   "inventory_value": 139552.37810352212,
+   "policy": "naive_zero",
+   "series": 2449,
+   "service_level": 0.75,
+   "units_short": 961425.4760852299,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 88.16811650139782,
+   "by_pattern": {
+    "erratic": [
+     0.9628403724625282,
+     955.8129564122415,
+     13
+    ],
+    "intermittent": [
+     0.6064834919364,
+     5.239910053629368,
+     162
+    ],
+    "lumpy": [
+     0.7814375484558607,
+     89.92311253498399,
+     2274
+    ]
+   },
+   "fill_rate": 0.770827372692665,
+   "inventory_value": 481954.6893939243,
+   "policy": "reorder_point",
+   "series": 2449,
+   "service_level": 0.75,
+   "units_short": 468107.8960861692,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 87.61222700633154,
+   "by_pattern": {
+    "erratic": [
+     0.9503405428215497,
+     1065.6349756852064,
+     13
+    ],
+    "intermittent": [
+     0.5681931763470054,
+     5.82654673532559,
+     162
+    ],
+    "lumpy": [
+     0.6633555483304017,
+     88.76263804273655,
+     2274
+    ]
+   },
+   "fill_rate": 0.65858400919895,
+   "inventory_value": 458568.8875218892,
+   "pattern_mix": {
+    "erratic": 13,
+    "intermittent": 194,
+    "lumpy": 2740
+   },
+   "policy": "reorder_point_stale",
+   "series": 2449,
+   "service_level": 0.75,
+   "units_short": 694940.301211978,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 73.04189566396413,
+   "by_pattern": {
+    "erratic": [
+     0.9518099385951995,
+     576.1356564696766,
+     13
+    ],
+    "intermittent": [
+     0.6202669819573298,
+     5.019040080216556,
+     162
+    ],
+    "lumpy": [
+     0.7723533452397803,
+     75.47117124526807,
+     2274
+    ]
+   },
+   "fill_rate": 0.7632455236235547,
+   "inventory_value": 379819.8272762353,
+   "policy": "forecast",
+   "series": 2449,
+   "service_level": 0.9,
+   "units_short": 466059.72900242213,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 99.64448930822839,
+   "by_pattern": {
+    "erratic": [
+     0.9616028251040579,
+     951.6467837413451,
+     13
+    ],
+    "intermittent": [
+     0.6400339366230464,
+     5.683597477333241,
+     162
+    ],
+    "lumpy": [
+     0.8095368251663578,
+     102.25484813580618,
+     2274
+    ]
+   },
+   "fill_rate": 0.7991315128164901,
+   "inventory_value": 525403.1934889341,
+   "policy": "moving_average",
+   "series": 2449,
+   "service_level": 0.9,
+   "units_short": 410272.5515865208,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 46.409799515358884,
+   "by_pattern": {
+    "erratic": [
+     0.6772025746231526,
+     146.3486229420219,
+     13
+    ],
+    "intermittent": [
+     0.5039682803165316,
+     2.9258906543650354,
+     162
+    ],
+    "lumpy": [
+     0.6685873272834536,
+     49.01442492210567,
+     2274
+    ]
+   },
+   "fill_rate": 0.6577436002956115,
+   "inventory_value": 249753.874065206,
+   "policy": "naive_zero",
+   "series": 2449,
+   "service_level": 0.9,
+   "units_short": 750360.8858891058,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 117.75415592753359,
+   "by_pattern": {
+    "erratic": [
+     0.971806548756545,
+     1172.8506200110603,
+     13
+    ],
+    "intermittent": [
+     0.6826261459482003,
+     6.838746254553401,
+     162
+    ],
+    "lumpy": [
+     0.8265366526543371,
+     120.60135864412933,
+     2274
+    ]
+   },
+   "fill_rate": 0.8177881865714193,
+   "inventory_value": 642302.4652472425,
+   "policy": "reorder_point",
+   "series": 2449,
+   "service_level": 0.9,
+   "units_short": 393683.28797511867,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 112.9253945306694,
+   "by_pattern": {
+    "erratic": [
+     0.9625986303487194,
+     1281.9354725549358,
+     13
+    ],
+    "intermittent": [
+     0.6305621640901651,
+     7.368581962733093,
+     162
+    ],
+    "lumpy": [
+     0.6973181616721483,
+     114.85272687514536,
+     2274
+    ]
+   },
+   "fill_rate": 0.6943104746507167,
+   "inventory_value": 583873.0712012863,
+   "pattern_mix": {
+    "erratic": 13,
+    "intermittent": 194,
+    "lumpy": 2740
+   },
+   "policy": "reorder_point_stale",
+   "series": 2449,
+   "service_level": 0.9,
+   "units_short": 643709.6334448535,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 90.6202964074822,
+   "by_pattern": {
+    "erratic": [
+     0.962530859855527,
+     700.1935564078119,
+     13
+    ],
+    "intermittent": [
+     0.6676588369843935,
+     5.9614837658169355,
+     162
+    ],
+    "lumpy": [
+     0.8056644597459229,
+     93.72225161641607,
+     2274
+    ]
+   },
+   "fill_rate": 0.7973681560766934,
+   "inventory_value": 473906.62816289184,
+   "policy": "forecast",
+   "series": 2449,
+   "service_level": 0.95,
+   "units_short": 415357.99534328026,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 117.73250085925795,
+   "by_pattern": {
+    "erratic": [
+     0.9679804882004712,
+     1084.6319412211155,
+     13
+    ],
+    "intermittent": [
+     0.6857298097290264,
+     6.679356213917767,
+     162
+    ],
+    "lumpy": [
+     0.8335682755003628,
+     121.00790864629879,
+     2274
+    ]
+   },
+   "fill_rate": 0.8245023413681232,
+   "inventory_value": 622237.4854418503,
+   "policy": "moving_average",
+   "series": 2449,
+   "service_level": 0.95,
+   "units_short": 370524.27731854306,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 61.17654622635844,
+   "by_pattern": {
+    "erratic": [
+     0.7633758920291807,
+     199.455727835554,
+     13
+    ],
+    "intermittent": [
+     0.5772491153414486,
+     3.7267868619072897,
+     162
+    ],
+    "lumpy": [
+     0.7239033620130979,
+     64.58808781606064,
+     2274
+    ]
+   },
+   "fill_rate": 0.7144117960389867,
+   "inventory_value": 329302.41443424183,
+   "policy": "naive_zero",
+   "series": 2449,
+   "service_level": 0.95,
+   "units_short": 650391.3113380902,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 136.23917796593554,
+   "by_pattern": {
+    "erratic": [
+     0.9749043761647049,
+     1307.4848270358175,
+     13
+    ],
+    "intermittent": [
+     0.7146304395419353,
+     7.8677053364266225,
+     162
+    ],
+    "lumpy": [
+     0.8463664373654717,
+     139.77124813097797,
+     2274
+    ]
+   },
+   "fill_rate": 0.8383344902674631,
+   "inventory_value": 741396.8136930043,
+   "policy": "reorder_point",
+   "series": 2449,
+   "service_level": 0.95,
+   "units_short": 357326.39469125826,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 128.44269609850292,
+   "by_pattern": {
+    "erratic": [
+     0.9652750496990365,
+     1418.682765253539,
+     13
+    ],
+    "intermittent": [
+     0.6586729362110609,
+     8.278693732377606,
+     162
+    ],
+    "lumpy": [
+     0.7126153894772845,
+     130.82908133938352,
+     2274
+    ]
+   },
+   "fill_rate": 0.7103883164490095,
+   "inventory_value": 660873.8906929082,
+   "pattern_mix": {
+    "erratic": 13,
+    "intermittent": 194,
+    "lumpy": 2740
+   },
+   "policy": "reorder_point_stale",
+   "series": 2449,
+   "service_level": 0.95,
+   "units_short": 618641.592545112,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 124.96734216108227,
+   "by_pattern": {
+    "erratic": [
+     0.9745702487654083,
+     941.4606937962906,
+     13
+    ],
+    "intermittent": [
+     0.7271062611246194,
+     7.8159808411411,
+     162
+    ],
+    "lumpy": [
+     0.8482494861089633,
+     129.38812702415194,
+     2274
+    ]
+   },
+   "fill_rate": 0.8409064756831038,
+   "inventory_value": 658477.9203737674,
+   "policy": "forecast",
+   "series": 2449,
+   "service_level": 0.99,
+   "units_short": 342193.2542702983,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 152.82067409196839,
+   "by_pattern": {
+    "erratic": [
+     0.9801835612225709,
+     1322.445674856284,
+     13
+    ],
+    "intermittent": [
+     0.7429170759528383,
+     8.601489293659366,
+     162
+    ],
+    "lumpy": [
+     0.865222538915396,
+     157.4824977565435,
+     2274
+    ]
+   },
+   "fill_rate": 0.8577423463021084,
+   "inventory_value": 810396.9930463473,
+   "policy": "moving_average",
+   "series": 2449,
+   "service_level": 0.99,
+   "units_short": 312408.82075882197,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 91.77206011455227,
+   "by_pattern": {
+    "erratic": [
+     0.8702467629405753,
+     350.9645254512436,
+     13
+    ],
+    "intermittent": [
+     0.6733879532471837,
+     5.3898507405558505,
+     162
+    ],
+    "lumpy": [
+     0.7942233680244771,
+     96.65842747556626,
+     2274
+    ]
+   },
+   "fill_rate": 0.7866337261053215,
+   "inventory_value": 493847.7645353502,
+   "policy": "naive_zero",
+   "series": 2449,
+   "service_level": 0.99,
+   "units_short": 508168.57461584057,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 171.47634564125056,
+   "by_pattern": {
+    "erratic": [
+     0.9789931299801152,
+     1558.8463544539156,
+     13
+    ],
+    "intermittent": [
+     0.7594880692443623,
+     9.727822328236828,
+     162
+    ],
+    "lumpy": [
+     0.8733222355286246,
+     176.34620089970312,
+     2274
+    ]
+   },
+   "fill_rate": 0.8663530998364314,
+   "inventory_value": 931517.4944882639,
+   "policy": "reorder_point",
+   "series": 2449,
+   "service_level": 0.99,
+   "units_short": 302032.7064605996,
+   "unscored": 498
+  },
+  {
+   "average_on_hand": 157.95261700038822,
+   "by_pattern": {
+    "erratic": [
+     0.9709683130464672,
+     1677.3420423317414,
+     13
+    ],
+    "intermittent": [
+     0.6995317652842015,
+     10.033582114123337,
+     162
+    ],
+    "lumpy": [
+     0.734211021355656,
+     161.21693460572683,
+     2274
+    ]
+   },
+   "fill_rate": 0.7331737838335673,
+   "inventory_value": 807863.5003075958,
+   "pattern_mix": {
+    "erratic": 13,
+    "intermittent": 194,
+    "lumpy": 2740
+   },
+   "policy": "reorder_point_stale",
+   "series": 2449,
+   "service_level": 0.99,
+   "units_short": 579365.742914528,
+   "unscored": 498
+  }
+ ]
+}

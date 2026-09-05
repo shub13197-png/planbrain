@@ -389,7 +389,7 @@ quietly excluding the hard ones is how a portfolio average gets improved.
 | [`docs/contracts/facts.md`](docs/contracts/facts.md) | The fact grain and the sparse rule |
 | [`docs/netreq.md`](docs/netreq.md) | Time-phased MRP |
 | [`docs/orders.md`](docs/orders.md) | The order list a planner acts on, and the gap it closed |
-| [`docs/benchmark.md`](docs/benchmark.md) | **Real demand, real incumbents** — the service/inventory frontier against a spreadsheet and an ERP's min/max |
+| [`docs/benchmark.md`](docs/benchmark.md) | **Real demand, real incumbents** — the service/inventory frontier against a spreadsheet and an ERP's min/max, with the run it was written from committed beside it |
 | [`docs/status.md`](docs/status.md) | Where the work stands and what is next — read this first |
 | [`docs/overrides.md`](docs/overrides.md) | **Designed, not built** — letting a planner overrule the plan |
 | [`docs/forecast.md`](docs/forecast.md) | Model selection and MASE, including its limits |

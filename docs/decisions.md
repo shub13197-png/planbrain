@@ -1984,3 +1984,49 @@ down.
 captured replies and `drain_backend` from the captured ready frame. If it grew
 logic it would stop being a render of the application and become a render of the
 stub.
+
+## 2026-09-05 — The benchmark re-run, and a caveat that was drawn in the wrong place
+
+Re-ran `tools/benchmark` on the current code against the same checksum-verified
+archive. **Every field of all 25 rows is identical to the run the document was
+written from**, meta included, and all 21 published claims reproduce.
+
+That is the boring outcome and it is the one worth recording: the figures in
+`docs/benchmark.md` are not a snapshot of a lucky afternoon.
+
+**The interesting part is that the caveat was wrong.** The document said its
+figures "are not CI-pinned", because the dataset is a 45 MB download CI does not
+have. That is true of *recomputing* them and false of everything else, and
+conflating the two undersold the guarantee while sounding scrupulous — which is
+its own kind of dishonesty. Three links exist, not one:
+
+| link | checked by | needs the dataset |
+|---|---|---|
+| document ↔ the run it was written from | `tests/test_benchmark_claims.py`, in CI | no |
+| that run ↔ a fresh run | `tools/check_benchmark` | yes |
+| dataset ↔ its checksum | `fetch_online_retail.py --verify-only` | yes |
+
+The run is 15 KB, so it is committed as `docs/benchmark-run.json`. No figure can
+now drift in the prose or in the register without CI failing. What CI still
+cannot say is whether the engines *produce* that run, and the document now says
+exactly that instead of shrugging at the whole question.
+
+**The register was attacked before it was trusted.** Five perturbations, each
+one leaving a structurally valid file: the spreadsheet holding 3% more stock,
+our own inventory moving 1%, the ERP rule gaining ten points, one series
+dropped from a denominator, and a literal absent from the prose. All five are
+caught, and all five are now tests rather than something done once by hand.
+
+**And the internal-consistency check failed on a correct document**, which is
+the finding worth keeping. Every "+30%" is `stock / our_stock - 1`, so the pair
+constrains the ratio -- but both are rounded for display, and at 3.6 units half
+a display digit is 1.4% of the value. "4.1 against 3.6" recomputes to +14% and
+is published as +16%; both are right, because the +16% came from the unrounded
+values. The check now tests an interval derived from the display precision, and
+a second test transposes a digit to prove that interval is not slack.
+
+**Rejected: relaxing the tolerance until it passed.** The first instinct was to
+widen it to 0.03 and move on, which would have accepted a genuinely transposed
+figure at portfolio scale. The rounding interval is derived rather than tuned,
+so it is tight where the numbers are large and honest about being loose where
+they are small.

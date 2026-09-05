@@ -2,7 +2,8 @@
 
 ```bash
 python datasets/fetch_online_retail.py --out data/online-retail
-python -m tools.benchmark --data data/online-retail --out docs/benchmark-run.md
+python -m tools.benchmark --data data/online-retail --json build/bench.json
+python -m tools.check_benchmark --json build/bench.json   # every figure below
 ```
 
 ## What this answers
@@ -142,12 +143,21 @@ dataset, ideally from manufacturing. The retraction stays where it is.
 * **Fill rates are low in absolute terms** (50–86%). Daily granularity on lumpy
   retail demand with a two-week lead time is a hard setting. The comparison
   between policies is the result; the absolute level is a property of the setup.
-* **These figures are not CI-pinned.** Every number in the README is checked on
-  every run against a fresh computation by `tools/published.py`. These are not:
-  the dataset is a 45 MB download that CI does not have. Reproducibility here
-  rests on the pinned archive checksum and the committed constants in
-  `docs/constants.md`, not on a gate. That is a weaker guarantee and it is said
-  plainly rather than left to be assumed.
+* **CI can check that these figures are reported honestly. It cannot check that
+  they are still true.** The distinction matters and it is not the one this
+  section originally drew.
+
+  | link | checked by | needs the dataset |
+  |---|---|---|
+  | this document ↔ the run it was written from | `tests/test_benchmark_claims.py`, in CI | no |
+  | that run ↔ a fresh run | `python -m tools.check_benchmark` | **yes** |
+  | the dataset ↔ its checksum | `fetch_online_retail.py --verify-only` | **yes** |
+
+  The run is committed as `docs/benchmark-run.json` — 15 KB — so no number here
+  can drift in the prose or the register without CI failing. What CI cannot tell
+  you is whether the engines still *produce* that run, because that needs the 45
+  MB download. Re-running it on 2026-09-05 reproduced every field of all 25 rows
+  exactly, and `tools/check_benchmark` is the command that says so.
 
 ## What it found in the product
 

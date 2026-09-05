@@ -49,9 +49,10 @@ any fill rate with enough stock, so the comparison is a curve.
 4. **Only one real dataset.** `docs/benchmark.md` disagrees with the README's
    own synthetic retraction about lumpy demand. One dataset settles nothing;
    what would is a second and third, ideally from manufacturing rather than
-   retail. The benchmark figures are also not CI-pinned — the dataset is a 45 MB
-   download CI does not have — which is a weaker guarantee than everything else
-   here and is stated in the document.
+   retail. The figures themselves reproduced exactly on a re-run and are gated
+   against the committed run in CI (`tests/test_benchmark_claims.py`); what CI
+   cannot check is whether the engines still *produce* that run, which needs the
+   45 MB download.
 5. **Single echelon.** The plan answers *what must the plant make*, not *what
    must each depot hold*. DRP is deferred, and it is the largest gap in the
    README's list.
