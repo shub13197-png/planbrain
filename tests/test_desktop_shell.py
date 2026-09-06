@@ -249,6 +249,34 @@ def test_the_global_tauri_bridge_the_frontend_reads_is_enabled():
     )
 
 
+def test_the_offline_windows_override_says_what_it_claims():
+    """The second Windows installer is only "offline" if this file says so.
+
+    A `--config` override that silently failed to apply would produce two
+    identically-sized installers, one of them promising an offline install it
+    cannot deliver -- and both would pass the size gate, because the offline
+    budget is the larger one. So the file is asserted here and the workflow
+    passes it by path: inline JSON was stripped of its quotes by PowerShell and
+    cost a Windows build to find out.
+    """
+    override = json.loads(
+        (TAURI / "tauri.offline.conf.json").read_text(encoding="utf-8")
+    )
+    mode = override["bundle"]["windows"]["webviewInstallMode"]["type"]
+    assert mode == "offlineInstaller"
+
+    # And the default must NOT be that, or there is no second variant at all.
+    default = CONF["bundle"]["windows"]["webviewInstallMode"]["type"]
+    assert default == "embedBootstrapper", (
+        "the default installer should carry the bootstrapper; the offline "
+        "runtime is what the -offline variant is for"
+    )
+
+    steps = RELEASE["jobs"]["build"]["steps"]
+    passes_it = [s for s in steps if "tauri.offline.conf.json" in str(s.get("run", ""))]
+    assert passes_it, "nothing in the release passes the offline override"
+
+
 def test_the_tauri_config_carries_no_json_comments():
     """Tauri validates this file against a strict schema: no extra keys.
 

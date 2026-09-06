@@ -119,12 +119,15 @@ jobs:
       # access during install either -- which matters precisely for the user
       # this product is for. So: both, named so the choice is obvious, and
       # docs/install.md tells you which to take.
+      # The override is a committed file rather than an inline JSON string.
+      # Inline, PowerShell strips the double quotes out of the argument and
+      # tauri reports `key must be a string at line 1 column 2` -- which costs a
+      # whole Windows build to discover. A file is also reviewable and is
+      # asserted in tests/test_desktop_shell.py.
       - name: Build the offline Windows installer
         if: runner.os == 'Windows'
         working-directory: desktop
-        run: >
-          npx tauri build --target ${{ matrix.triple }}
-          --config '{"bundle":{"windows":{"webviewInstallMode":{"type":"offlineInstaller"}}}}'
+        run: npx tauri build --target ${{ matrix.triple }} --config src-tauri/tauri.offline.conf.json
 
       - name: Set the offline variant aside under its own name
         if: runner.os == 'Windows'
