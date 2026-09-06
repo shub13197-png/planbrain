@@ -137,13 +137,17 @@ jobs:
           # Tauri writes both variants to the same filenames, so the second
           # build overwrote the first. This runs immediately after it and
           # renames what is there, before the collect step globs the directory.
+          # Null-delimited, because the installers are named
+          # "Planning Brain_0.1.0_...". An unquoted `for f in $(find ...)`
+          # splits on that space and hands mv a fragment of a path, which
+          # is exactly how this step failed the first time it ran.
           found=0
-          for f in $(find desktop/src-tauri/target -type f \
-                       \( -name '*.msi' -o -name '*-setup.exe' \)); do
+          while IFS= read -r -d '' f; do
             base=$(basename "$f")
             mv "$f" "offline/${base%.*}-offline.${base##*.}"
             found=$((found + 1))
-          done
+          done < <(find desktop/src-tauri/target -type f \
+                     \( -name '*.msi' -o -name '*-setup.exe' \) -print0)
           if [ "$found" -eq 0 ]; then
             echo "the offline build produced no installer" >&2
             exit 1
