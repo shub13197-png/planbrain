@@ -48,13 +48,30 @@ CALLS = (
 )
 
 
-def capture() -> tuple:
-    """Run the engines and collect one real reply per method."""
+def capture(*, with_override: bool = False) -> tuple:
+    """Run the engines and collect one real reply per method.
+
+    ``with_override`` fixes one quantity first, so the *numbers you fixed*
+    screen renders populated rather than empty. It is a real override written
+    through the real API -- the demo shows the feature working, not a mock-up of
+    it working.
+    """
     from planbrain.backend.api import METHODS, session
     from planbrain.backend.__main__ import PROTOCOL_VERSION
 
     state = session(":memory:")
     replies = {}
+    if with_override:
+        METHODS["demo.build"](state, seed=7)
+        METHODS["plan.run"](state)
+        sku_id, when, was = _a_planned_receipt(state)
+        METHODS["override.set"](
+            state, sku_id=sku_id, bucket_date=when.isoformat(),
+            qty=round(was * 0.6),
+            author="priya",
+            reason="Kapoor confirmed a smaller batch on the phone",
+        )
+        print(f"  fixed {sku_id} on {when} at 60% of {was:,.0f}")
     for method, params in CALLS:
         print(f"  {method} ...", flush=True)
         replies[method] = {"ok": True, "result": METHODS[method](state, **params)}
@@ -62,6 +79,23 @@ def capture() -> tuple:
              "methods": sorted(METHODS), "database": ":memory:"}
     state.con.close()
     return ready, replies
+
+
+def _a_planned_receipt(state):
+    """An (sku, date, qty) the plan actually schedules, to override."""
+    from planbrain.facts.access import read_facts
+
+    demo = state.demo
+    rows = read_facts(
+        state.con, "fact_supply_demand", scenario_id=0,
+        measure="planned_order_receipt",
+        start=demo.horizon_start, end=demo.horizon_end,
+        keys=[(p.sku_id, loc.loc_id) for p in demo.parts for loc in demo.locations],
+    )
+    for fact in rows:
+        if fact.qty:
+            return fact.keys[0], fact.bucket_date, fact.qty
+    raise SystemExit("the demo plan schedules no receipts to override")
 
 
 STUB = """
@@ -128,13 +162,15 @@ DRIVE = """
   document.getElementById("loadDemo").click();
   await wait(300);
   document.getElementById("runPlan").click();
-  await wait(800);
+  await wait(900);
+  if (%(import_tab)s) { document.getElementById("tabImport").click(); }
   document.title = "Planning Brain (rendered)";
 </script>
 """
 
 
-def build(out: Path) -> Path:
+def build(out: Path, *, with_override: bool = False,
+          import_tab: bool = False, name: str = "index.html") -> Path:
     # Refuse to stub the bridge unless the real application would have one.
     #
     # This harness defines `window.__TAURI__` in order to replay replies, and
@@ -154,7 +190,7 @@ def build(out: Path) -> Path:
             "something that does not work."
         )
 
-    ready, replies = capture()
+    ready, replies = capture(with_override=with_override)
     index = INDEX.read_text(encoding="utf-8")
 
     marker = '<script type="module">'
@@ -167,8 +203,9 @@ def build(out: Path) -> Path:
                    "replies": json.dumps(replies, default=str)}
 
     out.mkdir(parents=True, exist_ok=True)
-    page = out / "index.html"
-    page.write_text(index.replace(marker, stub + marker) + DRIVE, encoding="utf-8")
+    page = out / name
+    drive = DRIVE % {"import_tab": "true" if import_tab else "false"}
+    page.write_text(index.replace(marker, stub + marker) + drive, encoding="utf-8")
     return page
 
 
@@ -202,12 +239,19 @@ def main(argv=None) -> int:
     parser.add_argument("--out", default="build/ui")
     parser.add_argument("--screenshot", action="store_true")
     parser.add_argument("--height", type=int, default=1700)
+    parser.add_argument("--with-override", action="store_true",
+                        help="fix one quantity first, so the overrides screen "
+                             "renders populated")
+    parser.add_argument("--import-tab", action="store_true",
+                        help="capture the import tab instead of the plan tab")
+    parser.add_argument("--name", default="index.html")
     args = parser.parse_args(argv)
 
-    page = build(Path(args.out).resolve())
+    page = build(Path(args.out).resolve(), with_override=args.with_override,
+                 import_tab=args.import_tab, name=args.name)
     print(f"rendered {page}")
     if args.screenshot:
-        shot = page.with_name("ui.png")
+        shot = page.with_suffix(".png")
         if screenshot(page, shot, height=args.height):
             print(f"screenshot {shot} ({shot.stat().st_size:,} bytes)")
         else:

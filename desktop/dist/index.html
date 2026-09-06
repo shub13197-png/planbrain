@@ -36,6 +36,11 @@
          margin: .5rem 0; }
   .scroll { overflow-x: auto; max-height: 22rem; overflow-y: auto; }
   .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin: .5rem 0; }
+  /* An author `display` beats the browser's `[hidden] { display: none }`, so
+     any hidden element carrying .row stayed visible. #sheetRow did: the sheet
+     and header-row controls were on screen before a file had been chosen,
+     inviting you to pick a sheet of nothing. Found by looking at a render. */
+  [hidden] { display: none !important; }
   code { font-size: .85em; background: rgba(128,128,128,.14); padding: .05rem .3rem;
          border-radius: 3px; }
   nav { display: flex; gap: .3rem; margin: .9rem 0 0; }
