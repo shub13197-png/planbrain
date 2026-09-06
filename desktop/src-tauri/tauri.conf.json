@@ -7,7 +7,6 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "//": "The frontend is plain ES modules with no bundler, so it reaches the shell through window.__TAURI__. That global exists only when this is true -- it defaults to false in Tauri v2, and with it absent the interface threw on its first line and every button in the window was dead. Asserted against the frontend in tests/test_desktop_shell.py.",
     "withGlobalTauri": true,
     "windows": [
       {

@@ -249,6 +249,30 @@ def test_the_global_tauri_bridge_the_frontend_reads_is_enabled():
     )
 
 
+def test_the_tauri_config_carries_no_json_comments():
+    """Tauri validates this file against a strict schema: no extra keys.
+
+    The reason to enforce it here is the failure mode. A `"//"` key explaining
+    a setting looks harmless, parses as valid JSON, and is rejected by
+    `tauri build` with *Additional properties are not allowed* -- on every
+    platform at once, several minutes into a four-platform release run, having
+    already built the sidecar. It cost a full release cycle to learn.
+
+    Explanations for these settings go in the tests that assert them and in
+    `docs/packaging.md`, where a reader will actually find them.
+    """
+    def keys(node, path="app"):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                assert not key.startswith("//"), (
+                    f"{path}.{key} is a JSON comment; tauri build rejects the "
+                    f"whole config for it"
+                )
+                keys(value, f"{path}.{key}")
+
+    keys(CONF)
+
+
 def test_the_interface_script_parses():
     """Nothing else in this repo ever parses the frontend.
 

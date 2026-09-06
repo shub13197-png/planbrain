@@ -5,7 +5,7 @@ session. `docs/decisions.md` is the permanent record of *why*; this file is the
 short answer to *where are we*, and it is the first thing to read when picking
 the work back up.
 
-Last updated: **2026-09-05**
+Last updated: **2026-09-06**
 
 ## What the product does today
 
@@ -18,7 +18,9 @@ Last updated: **2026-09-05**
 | **Orders** | The planned releases as a list a planner acts on, exportable to `.xlsx`/`.csv`. |
 | **Risks** | Two lists, never one total: orders already overdue — the signal that actually fires, **212 overdue orders across 159 items** on the demo — and buckets where the projected balance goes negative. |
 | Desktop | Tauri shell, PyInstaller backend, stdio IPC, offline guard engaged in-process. |
+| **Overrides** | The textbook firm planned order: fix a quantity on the day material is needed, with a name and a reason. No run resizes or reschedules it, and a shortfall shows as a shortage rather than being topped back up. |
 | Persistence | One SQLite file per user, at the path `docs/install.md` documents. |
+| Packaging | Two Windows installers — the standard one embeds the WebView2 bootstrapper (~150 MB, inside budget), the `-offline` variant embeds the runtime (~330 MB, no network at install). |
 
 ## Where it stands against the alternatives
 
@@ -33,19 +35,20 @@ any fill rate with enough stock, so the comparison is a curve.
 
 ## Open, in the order it matters
 
-1. **The launch fix is not itself launched.** The dropped-first-line bug is
-   fixed and cannot be compiled here — no Rust toolchain, no MSVC. It needs a CI
-   release build, then download, extract, launch, and confirm the status bar
-   reads *Offline*. Until that happens the fix is unverified.
-2. **The Windows installer is 330 MB against a committed 150 MB budget.** The
-   gate fails the build, correctly. The cause is the bundled WebView2 offline
-   runtime, which exists to keep the "no network during install" promise. That
-   is a product decision and it is open: ship two installers, switch to the
-   bootstrapper, or move the budget with a written reason.
-3. **Overrides are designed and not built** — `docs/overrides.md`. The textbook
-   firm planned order, with provenance beside the fact rather than inside it.
-   Adds to the measure vocabulary, which is a contract, so the design is up for
-   review before code.
+1. **The interface has never actually worked in a shipped build, and the fix
+   is not yet verified.** `withGlobalTauri` was absent from `tauri.conf.json`,
+   so `window.__TAURI__` did not exist and the frontend threw on its first
+   line — every button dead, on every launch. Fixed, asserted in
+   `tests/test_desktop_shell.py`, and it needs one more CI release build to
+   confirm on a real install. **The 2026-09-04 diagnosis of that screen was
+   wrong and is retracted in `docs/decisions.md`.**
+2. **The Linux AppImage fails the size gate at 161.5 MB against 150**, and is
+   left failing on purpose. There is no bloat — the sidecar is accounted for to
+   the megabyte and every part of it is required by `statsforecast`. The budget
+   simply is not achievable on Linux with this dependency set. Trimming scipy
+   with PyInstaller excludes, dropping a dependency, or re-deriving the budget
+   from the measurement are the options; the third is probably right and is
+   still a decision. `docs/packaging.md`.
 4. **Only one real dataset.** `docs/benchmark.md` disagrees with the README's
    own synthetic retraction about lumpy demand. One dataset settles nothing;
    what would is a second and third, ideally from manufacturing rather than
