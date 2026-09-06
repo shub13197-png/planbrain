@@ -5,7 +5,16 @@ session. `docs/decisions.md` is the permanent record of *why*; this file is the
 short answer to *where are we*, and it is the first thing to read when picking
 the work back up.
 
-Last updated: **2026-09-06**
+Last updated: **2026-09-06**, at `1302619`. 853 tests pass locally.
+
+## See it
+
+The interface, published and openable from anywhere:
+<https://claude.ai/code/artifact/2fb531c9-5bdc-400b-8b86-8790942732ee>
+
+The real `index.html` replaying real engine output, in a working state: worked
+example loaded, plan run, one quantity overridden by hand. Regenerate it with
+`tools/render_ui.py` (below) after any interface change.
 
 ## What the product does today
 
@@ -33,22 +42,48 @@ revisited.
 Read that file rather than quoting a single number from it. Any policy can buy
 any fill rate with enough stock, so the comparison is a curve.
 
+## Blocked, not merely open
+
+**GitHub Actions will not start any job on this account.**
+
+> The job was not started because recent account payments have failed or your
+> spending limit needs to be increased.
+
+The `ci` run at 09:07 on 6 September passed; everything from 09:28 is refused
+before a step runs — which looks exactly like four platforms failing at once and
+is not that. **Nothing merges to a verified state until this is cleared**, and
+the item below depends on it.
+
 ## Open, in the order it matters
 
-1. **The interface has never actually worked in a shipped build, and the fix
-   is not yet verified.** `withGlobalTauri` was absent from `tauri.conf.json`,
-   so `window.__TAURI__` did not exist and the frontend threw on its first
-   line — every button dead, on every launch. Fixed, asserted in
-   `tests/test_desktop_shell.py`, and it needs one more CI release build to
-   confirm on a real install. **The 2026-09-04 diagnosis of that screen was
-   wrong and is retracted in `docs/decisions.md`.**
-2. **The Linux AppImage fails the size gate at 161.5 MB against 150**, and is
+1. **The interface has never worked in a shipped build, and the fix is not yet
+   verified.** `withGlobalTauri` was absent from `tauri.conf.json`, so
+   `window.__TAURI__` did not exist and the frontend threw on its first line —
+   **every button in the window dead, on every launch, from the first one.**
+   Fixed and asserted in `tests/test_desktop_shell.py`; it needs one CI release
+   build, a download, an install, and a click to confirm. Blocked on the billing
+   item above.
+
+   **The 2026-09-04 diagnosis of that screen was wrong and was published as
+   fact**; retracted in `docs/decisions.md`. The race it described is real, is
+   fixed, and was not what anyone was looking at.
+
+2. **Three Windows builds were lost to shell details**, each costing a full
+   four-platform run: a `"//"` key Tauri's strict config schema rejects,
+   PowerShell stripping the quotes out of an inline `--config` JSON, and word
+   splitting on the space in `Planning Brain_0.1.0_…`. All three are fixed and
+   the last was verified locally against files with spaces. The two-installer
+   path has therefore **never completed a green run** — that is what the next
+   release build settles, along with item 1.
+
+3. **The Linux AppImage fails the size gate at 161.5 MB against 150**, and is
    left failing on purpose. There is no bloat — the sidecar is accounted for to
    the megabyte and every part of it is required by `statsforecast`. The budget
    simply is not achievable on Linux with this dependency set. Trimming scipy
    with PyInstaller excludes, dropping a dependency, or re-deriving the budget
    from the measurement are the options; the third is probably right and is
    still a decision. `docs/packaging.md`.
+
 4. **Only one real dataset.** `docs/benchmark.md` disagrees with the README's
    own synthetic retraction about lumpy demand. One dataset settles nothing;
    what would is a second and third, ideally from manufacturing rather than
@@ -63,14 +98,28 @@ any fill rate with enough stock, so the comparison is a curve.
 ## How to see it without a Rust toolchain
 
 ```bash
-python -m tools.render_ui --out build/ui --screenshot
+python -m tools.render_ui --out build/demo --with-override --screenshot
+python -m tools.render_ui --out build/demo --import-tab --name import.html --screenshot
 ```
 
 Renders the real `index.html` against **real replies from the real engines**,
-with `window.__TAURI__` stubbed. It is the only thing in the repository that
-exercises the interface's rendering path — the shell tests check that the page
-parses and calls methods that exist, which is not the same as it drawing the
-right thing.
+with `window.__TAURI__` stubbed. `--with-override` fixes a real quantity through
+the real API first, so the *numbers you fixed* screen renders populated — and
+then shows the feature's consequences rather than the feature: capping a batch
+at 12,000 puts a 792-unit shortage on the risk screen and pushes a replacement
+order into the list.
+
+It is the only thing in the repository that exercises the interface's rendering
+path. The shell tests check that the page parses and calls methods that exist,
+which is not the same as it drawing the right thing — and looking at a render is
+how the `[hidden]` bug was found, where an author `display: flex` outranked the
+browser's `[hidden] { display: none }` and left the sheet picker on screen
+before a file had been chosen.
+
+**It also masked a worse bug for a release.** The harness defines
+`window.__TAURI__` in order to stub it, so it rendered the application perfectly
+while the shipped one was inert. It now refuses to run unless the config would
+have provided that global for real.
 
 ## Verified end to end, on real data
 
@@ -81,8 +130,12 @@ a query-size ceiling at ~500 keys, and a risk screen that could never fire.
 
 ## Standing rules that are easy to lose
 
-* **Launch the artefact.** Cross-file rules cannot see a race, and three faults
-  in one sitting came out of running the built application once.
+* **Launch the artefact, then press a button.** The window opening proves the
+  shell started and nothing more; everything interactive is downstream of code
+  that may never have run. An installed build rendered perfectly for two days
+  with every control dead.
+* **Never let a stub supply the thing whose absence is the bug.** A harness that
+  defines what production is missing cannot find what production is missing.
 * **Published figures need a pin.** `tools/published.py` links every quoted
   number to a fresh computation *and* to the prose it appears in. Tests protect
   code; pins protect claims.
