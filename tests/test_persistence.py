@@ -122,10 +122,21 @@ def test_the_database_lands_where_the_install_guide_says_it_does(monkeypatch):
             f"docs/install.md no longer documents the {platform} path {text!r}"
         )
 
-    monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\someone\AppData\Local")
+    # A POSIX-shaped value on purpose, even though this is the Windows branch.
+    #
+    # `pathlib.Path` is the *running* platform's flavour, so on Linux a
+    # backslash is an ordinary character rather than a separator: the first
+    # version of this passed a Windows-style LOCALAPPDATA, which splits into
+    # four components on Windows and stays one on Linux. It passed on the
+    # machine it was written on and failed in CI, which is the only place
+    # this suite meets Linux.
+    #
+    # What is under test is that the win32 branch reads LOCALAPPDATA and
+    # lands PlanningBrain/planning.db beneath whatever it holds -- not how
+    # a string is split into components.
+    monkeypatch.setenv("LOCALAPPDATA", "/appdata/local")
     monkeypatch.setattr(sys, "platform", "win32")
-    assert api.default_database().parent.name == "PlanningBrain"
-    assert api.default_database().parent.parent.as_posix().endswith("AppData/Local")
+    assert api.default_database() == Path("/appdata/local/PlanningBrain/planning.db")
 
 
 @pytest.mark.parametrize("platform, tail", [

@@ -2030,3 +2030,20 @@ widen it to 0.03 and move on, which would have accepted a genuinely transposed
 figure at portfolio scale. The rounding interval is derived rather than tuned,
 so it is tight where the numbers are large and honest about being loose where
 they are small.
+
+## 2026-09-06 — A test that could only fail on Linux, and CI is the only Linux here
+
+ asserted the
+Windows branch of `default_database()` by monkeypatching `sys.platform` and
+handing it a Windows-style LOCALAPPDATA. `pathlib.Path` is the *running*
+platform's flavour, though, so on Linux a backslash is an ordinary character and
+not a separator: the value splits into four components on Windows and stays one
+everywhere else. Green on the machine it was written on, red in CI.
+
+The product code was never wrong. The test was, in a way that only a second
+platform could show — which is the same shape as everything else found in the
+last two days, and the reason the offline container job earns its runtime.
+
+Now asserted with a POSIX-shaped value and an exact expected path, so it checks
+what is actually under test — the win32 branch reads LOCALAPPDATA and lands
+`PlanningBrain/planning.db` beneath it — rather than how a string is split.

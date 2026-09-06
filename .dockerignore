@@ -1,6 +1,7 @@
 .git
 data/local
 data/m5
+data/online-retail
 **/__pycache__
 .pytest_cache
 desktop/node_modules
