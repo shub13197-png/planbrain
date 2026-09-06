@@ -2033,8 +2033,8 @@ they are small.
 
 ## 2026-09-06 — A test that could only fail on Linux, and CI is the only Linux here
 
- asserted the
-Windows branch of `default_database()` by monkeypatching `sys.platform` and
+`test_the_database_lands_where_the_install_guide_says_it_does` asserted
+the Windows branch of `default_database()` by monkeypatching `sys.platform` and
 handing it a Windows-style LOCALAPPDATA. `pathlib.Path` is the *running*
 platform's flavour, though, so on Linux a backslash is an ordinary character and
 not a separator: the value splits into four components on Windows and stays one
