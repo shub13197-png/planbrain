@@ -384,3 +384,67 @@ network call that a minority of them would ever make. The user this product
 targets is on a rural connection, which is the same reason the budget exists and
 the same reason the promise exists.
 
+### Decided: both, because one file cannot keep both promises
+
+The default `.msi` and `-setup.exe` now embed the **bootstrapper** — roughly 150
+MB, inside the committed budget — and a third file,
+`…_x64_en-US-offline.msi`, embeds the runtime at roughly 330 MB.
+
+Neither option alone was defensible. Shipping only the offline installer makes
+every Windows user download 180 MB of runtime that most machines already have,
+over the rural connection the budget exists to respect. Shipping only the
+bootstrapper makes "no network access at any point" false for the machine that
+has none — which is the machine this product is for. So the choice is handed to
+the person who knows which they are, in one sentence at the top of
+`docs/install.md`, and the file names say which is which.
+
+**The gate now holds two budgets, and this is not the same as raising one.**
+150 MB for every installer, 400 MB for a file whose name carries `-offline`. A
+*standard* installer at 330 MB still fails — `packaging/check_installer_size.py`
+matches on the name, not the size, so the variant that is allowed to be large
+cannot be confused with one that has quietly become large. The offline budget is
+400 rather than 330 deliberately: a budget set flush against today's
+measurement fails on the next dependency, which trains people to edit budgets.
+
+**The build produces it by building twice** and renaming the first pass, because
+Tauri writes both variants to the same filenames. The rename step fails if it
+finds nothing to rename, so a silently-skipped offline build cannot pass as a
+successful one.
+
+## Open finding: the Linux AppImage cannot reach 150 MB
+
+The Linux job fails the gate at **161.5 MB against 150**, and this is a
+different problem from WebView2 with a different answer, so it is recorded
+rather than folded in.
+
+There is no bloat to remove. The AppImage is essentially the sidecar, and the
+sidecar is accounted for to the megabyte:
+
+| | MB |
+| --- | --- |
+| scipy | 46 |
+| numpy + `numpy.libs` | 27 |
+| `scipy.libs` | 20 |
+| pandas | 17 |
+| statsmodels | 7 |
+| CPython itself | 7 |
+| everything else | ~31 |
+| **sidecar total** | **155** |
+
+Nothing there is unexplained and nothing is unused: `statsforecast` requires
+scipy, numpy, pandas and statsmodels, and it is what fits AutoETS, Croston and
+TSB. The sidecar's own budget is 400 MB and it passes comfortably.
+
+**So the 150 MB per-file installer budget is not achievable on Linux while this
+dependency set ships.** It was committed before the first build, which is the
+right way round, and the first three builds have now measured what a Python
+scientific stack actually weighs.
+
+This is deliberately left failing rather than fixed by editing the number. The
+options are: trim scipy and numpy with PyInstaller excludes (real work, testable
+only in CI, unknown yield); drop a dependency (drops the forecasting); or
+re-derive the Linux budget from the measurement above and publish the
+accounting. **The third is probably right and it is still a decision**, and a
+budget quietly raised by the person whose build it was failing is precisely the
+move this file exists to make visible.
+

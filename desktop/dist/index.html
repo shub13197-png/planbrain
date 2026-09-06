@@ -106,8 +106,27 @@
 </div>
 <div id="planResult"></div>
 
+<div id="overrideSection" hidden>
+<h2>4 &middot; Numbers you fixed</h2>
+<div id="overrideList"></div>
+<div class="row">
+  <label>Item <input type="number" id="ovSku" style="width:7rem" placeholder="sku id"></label>
+  <label>Needed on <input type="date" id="ovDate"></label>
+  <label>Quantity <input type="number" id="ovQty" style="width:7rem"></label>
+  <label>You <input type="text" id="ovAuthor" style="min-width:8rem" placeholder="your name"></label>
+  <label>Because <input type="text" id="ovReason" style="min-width:18rem"
+         placeholder="e.g. Kapoor confirmed 500 on the phone"></label>
+  <button id="ovSet">Fix this number</button>
+</div>
+<p class="note">The date is the day the material is <em>needed</em>, not the day
+ the order goes out &mdash; the release is worked back from it by the lead time.
+ A fixed quantity is never resized or rescheduled by a run, and if it is too
+ small the shortfall shows up under <em>what is going to go wrong</em> rather
+ than being quietly topped back up.</p>
+</div>
+
 <div id="riskSection" hidden>
-<h2>4 &middot; What is going to go wrong</h2>
+<h2>5 &middot; What is going to go wrong</h2>
 <div class="row">
   <label>Sort by
     <select id="riskOrder">
@@ -121,7 +140,7 @@
 </div>
 
 <div id="ordersSection" hidden>
-<h2>5 &middot; What to order</h2>
+<h2>6 &middot; What to order</h2>
 <div class="row">
   <label>Show
     <select id="orderFilter">
@@ -368,6 +387,109 @@ function renderPlan(r) {
     </table></div>` + caveat + suppressed;
 }
 
+// --- numbers a person fixed ------------------------------------------------
+// The user's condition on this feature: the plan reports which numbers are the
+// machine's and which are the human's. Shown beside the verdict rather than in
+// a panel of its own, for the same reason the growth assumptions are -- "the
+// plan fits" means something different when a person moved three numbers to
+// make it fit.
+
+async function renderOverrides() {
+  let r;
+  try {
+    r = await call("override.list", { limit: 50 });
+  } catch (err) {
+    $("overrideList").innerHTML = '<span class="bad">' + (err.message || err) + "</span>";
+    return;
+  }
+  $("overrideSection").hidden = false;
+
+  if (r.disagreements && r.disagreements.length) {
+    // A fixed quantity with nobody behind it, or a reason with no quantity.
+    // Either leaves the plan half-explained, which is worse than an
+    // unexplained one because you cannot tell which you are looking at.
+    $("overrideList").innerHTML =
+      '<p class="note bad">This plan contains overrides that do not add up: '
+      + r.disagreements.map(escapeHtml).join("; ") + "</p>";
+    return;
+  }
+
+  if (r.total === 0) {
+    $("overrideList").innerHTML =
+      '<p class="note">Every number in this plan is the engine\'s. Fix one below '
+      + "if you know something it does not.</p>";
+    return;
+  }
+
+  const rows = r.overrides.map((o) => `<tr>
+      <td>${o.bucket_date}</td>
+      <td>${escapeHtml(o.name)}</td>
+      <td>${num(o.qty)}</td>
+      <td>${escapeHtml(o.author)}</td>
+      <td>${escapeHtml(o.reason)}</td>
+      <td><button data-sku="${o.sku_id}" data-loc="${o.loc_id}"
+                  data-date="${o.bucket_date}" class="ovClear">Clear</button></td>
+    </tr>`).join("");
+
+  $("overrideList").innerHTML =
+    `<p class="note"><b>${num(r.total)} of the numbers in this plan were fixed by
+      a person</b>, not by the engine &mdash; ${escapeHtml(r.authors.join(", "))}.
+      Across ${num(r.items_affected)} items.</p>
+     <div class="scroll"><table>
+       <tr><th>needed on</th><th>item</th><th>fixed at</th><th>who</th>
+           <th>because</th><th></th></tr>
+       ${rows}
+     </table></div>`;
+
+  for (const button of document.querySelectorAll(".ovClear")) {
+    button.onclick = async () => {
+      try {
+        await call("override.clear", {
+          sku_id: Number(button.dataset.sku),
+          loc_id: Number(button.dataset.loc),
+          bucket_date: button.dataset.date,
+        });
+      } catch (err) { return showOverrideError(err); }
+      await renderOverrides();
+      $("planNote").textContent = "Override cleared \u2014 run the plan again.";
+    };
+  }
+}
+
+function showOverrideError(err) {
+  $("overrideList").innerHTML =
+    '<span class="bad">' + escapeHtml(err.message || String(err)) + "</span>";
+}
+
+// Reasons and item names are typed by a person and rendered as HTML. Escaping
+// once, here, rather than trusting every field.
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+$("ovSet").onclick = async () => {
+  const params = {
+    sku_id: Number($("ovSku").value),
+    bucket_date: $("ovDate").value,
+    qty: Number($("ovQty").value),
+    author: $("ovAuthor").value,
+    reason: $("ovReason").value,
+  };
+  if (!params.sku_id || !params.bucket_date) {
+    return showOverrideError(new Error("an item and a date are needed"));
+  }
+  try {
+    await call("override.set", params);
+  } catch (err) { return showOverrideError(err); }
+  $("ovQty").value = ""; $("ovReason").value = "";
+  await renderOverrides();
+  // Saying so rather than re-running silently: a plan run is a minute, and
+  // deciding to spend it is the planner's.
+  $("planNote").textContent = "Number fixed \u2014 run the plan again to use it.";
+};
+
 // --- what is going to go wrong ---------------------------------------------
 // netreq builds an exception for every projected shortage and the application
 // never showed one of them. This is the screen a planner opens the software
@@ -526,6 +648,7 @@ $("runPlan").onclick = async () => {
   if (!dataLoaded) return;
   $("runPlan").disabled = true;
   $("planResult").innerHTML = "";
+  $("overrideSection").hidden = true;
   $("riskSection").hidden = true;
   $("ordersSection").hidden = true;
   try {
@@ -540,6 +663,7 @@ $("runPlan").onclick = async () => {
     );
     $("planNote").textContent = "Done.";
     renderPlan(r);
+    await renderOverrides();
     await renderRisk();
     await renderOrders();
   } catch (err) {

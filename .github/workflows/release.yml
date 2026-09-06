@@ -105,6 +105,53 @@ jobs:
         working-directory: desktop
         run: npx tauri build --target ${{ matrix.triple }}
 
+      # --- the offline Windows variant -----------------------------------
+      # Two Windows installers, because one file cannot keep both promises.
+      #
+      # The default embeds the WebView2 *bootstrapper*: ~150 MB, inside the
+      # committed budget, and it fetches the runtime during install on the
+      # minority of machines that lack it. The offline variant embeds the
+      # runtime itself: ~330 MB, and installs with no network at all.
+      #
+      # Shipping only the offline one made every Windows user download 180 MB
+      # of runtime most of them already have. Shipping only the bootstrapper
+      # would break the promise in docs/install.md that there is no network
+      # access during install either -- which matters precisely for the user
+      # this product is for. So: both, named so the choice is obvious, and
+      # docs/install.md tells you which to take.
+      - name: Build the offline Windows installer
+        if: runner.os == 'Windows'
+        working-directory: desktop
+        run: >
+          npx tauri build --target ${{ matrix.triple }}
+          --config '{"bundle":{"windows":{"webviewInstallMode":{"type":"offlineInstaller"}}}}'
+
+      - name: Set the offline variant aside under its own name
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p offline
+          # Tauri writes both variants to the same filenames, so the second
+          # build overwrote the first. This runs immediately after it and
+          # renames what is there, before the collect step globs the directory.
+          found=0
+          for f in $(find desktop/src-tauri/target -type f \
+                       \( -name '*.msi' -o -name '*-setup.exe' \)); do
+            base=$(basename "$f")
+            mv "$f" "offline/${base%.*}-offline.${base##*.}"
+            found=$((found + 1))
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "the offline build produced no installer" >&2
+            exit 1
+          fi
+          ls -la offline
+
+      - name: Rebuild the standard Windows installer
+        if: runner.os == 'Windows'
+        working-directory: desktop
+        run: npx tauri build --target ${{ matrix.triple }}
+
       # --- collect and checksum ------------------------------------------
       - name: Collect installers and checksums
         shell: bash
@@ -114,6 +161,8 @@ jobs:
             \( -name '*.msi' -o -name '*.dmg' -o -name '*-setup.exe' \
                -o -name '*.AppImage' -o -name '*.deb' \) \
             -exec cp {} dist/ \;
+          # The offline Windows variant, set aside before the standard rebuild.
+          if [ -d offline ]; then cp offline/* dist/; fi
           if [ -z "$(ls -A dist)" ]; then
             # An empty artifact directory would upload cleanly and publish a
             # release with nothing in it.

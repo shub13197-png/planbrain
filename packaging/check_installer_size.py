@@ -24,6 +24,23 @@ from pathlib import Path
 #: an edit here, an edit to the document, and a reason someone has to write.
 BUDGET_MB = 150.0
 
+#: The Windows *offline* variant is deliberately larger: it embeds the WebView2
+#: runtime rather than its bootstrapper, which is 180 MB and the entire point of
+#: shipping it. Its budget is separate rather than the general one raised --
+#: those are different acts, and only the second is the thing this gate exists
+#: to prevent. The standard installer is still held to 150 MB, which is what
+#: nearly every user downloads.
+#:
+#: 400 MB rather than 330: a budget set flush against today's measurement fails
+#: on the next dependency, which trains people to edit the budget. It is a
+#: ceiling, not a target.
+OFFLINE_BUDGET_MB = 400.0
+
+#: How the offline variant is recognised. The release workflow renames it; if
+#: that ever stops matching, the file falls back to the 150 MB budget and fails
+#: loudly rather than being silently waved through under the larger one.
+OFFLINE_MARKER = "-offline"
+
 #: Extensions this understands. Anything else in the directory is reported and
 #: not measured, rather than silently skipped -- a new bundle format arriving
 #: unmeasured is exactly how the first one got to 315 MB unnoticed.
@@ -38,10 +55,21 @@ def weigh(root: Path) -> list:
     )
 
 
+def budget_for(path, budget_mb: float, offline_budget_mb: float) -> float:
+    """The budget this particular file answers to.
+
+    Matched on the name rather than the size, so a standard installer that
+    ballooned to 300 MB is still a failure instead of being mistaken for the
+    variant that is allowed to be large.
+    """
+    return offline_budget_mb if OFFLINE_MARKER in path.stem else budget_mb
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory")
     parser.add_argument("--budget-mb", type=float, default=BUDGET_MB)
+    parser.add_argument("--offline-budget-mb", type=float, default=OFFLINE_BUDGET_MB)
     args = parser.parse_args(argv)
 
     root = Path(args.directory)
@@ -59,19 +87,22 @@ def main(argv=None) -> int:
         return 1
 
     over = []
-    print(f"installer budget: {args.budget_mb:.0f} MB per file")
+    print(f"installer budget: {args.budget_mb:.0f} MB per file"
+          f" ({args.offline_budget_mb:.0f} MB for a {OFFLINE_MARKER} variant)")
     for path in installers:
         size_mb = path.stat().st_size / 1e6
-        flag = "OVER" if size_mb > args.budget_mb else "ok"
-        print(f"  {size_mb:8.1f} MB  {flag:>4s}  {path.name}")
-        if size_mb > args.budget_mb:
-            over.append((path.name, size_mb))
+        budget = budget_for(path, args.budget_mb, args.offline_budget_mb)
+        flag = "OVER" if size_mb > budget else "ok"
+        print(f"  {size_mb:8.1f} MB  {flag:>4s}  {path.name}"
+              f"  (budget {budget:.0f} MB)")
+        if size_mb > budget:
+            over.append((path.name, size_mb, budget))
 
     if over:
         print(file=sys.stderr)
-        for name, size_mb in over:
-            print(f"  {name} is {size_mb:.0f} MB against a {args.budget_mb:.0f} MB "
-                  f"budget, {size_mb / args.budget_mb:.1f}x over", file=sys.stderr)
+        for name, size_mb, budget in over:
+            print(f"  {name} is {size_mb:.0f} MB against a {budget:.0f} MB "
+                  f"budget, {size_mb / budget:.1f}x over", file=sys.stderr)
         print(
             "\n  This is a finding, not a number to adjust. Diagnose what is in "
             "the installer before touching the budget -- see docs/packaging.md.",

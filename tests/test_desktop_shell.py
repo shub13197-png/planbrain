@@ -215,6 +215,40 @@ def test_the_frontend_invokes_only_commands_the_shell_exposes():
     assert called <= registered, f"not registered in Rust: {sorted(called - registered)}"
 
 
+def test_the_global_tauri_bridge_the_frontend_reads_is_enabled():
+    """`window.__TAURI__` exists only when the config asks for it.
+
+    **This is the bug that made every button in the window dead, on every
+    launch, from the first one.** The frontend opens with
+
+        const { invoke } = window.__TAURI__.core;
+
+    and `withGlobalTauri` defaults to false in Tauri v2, so that line threw
+    `TypeError: Cannot read properties of undefined` before a single handler was
+    attached. The window rendered, because the HTML and CSS are static, and
+    nothing in it worked.
+
+    It survived every check here because each one looks at one file: the
+    frontend's use of the global is consistent, the config is valid, the
+    capability is valid. The disagreement is *between* them, which is the whole
+    reason this module exists — and it went unnoticed anyway because nothing
+    asserted this particular pair.
+
+    It also survived `tools/render_ui.py`, which defines `window.__TAURI__`
+    itself in order to stub it. A harness that supplies the thing whose absence
+    is the bug cannot find that bug, so `render_ui` now refuses to run unless
+    this flag is set.
+    """
+    uses_global = "window.__TAURI__" in INDEX
+    enabled = CONF.get("app", {}).get("withGlobalTauri", False)
+    assert uses_global, "the frontend no longer uses the global bridge"
+    assert enabled is True, (
+        "desktop/dist/index.html reads window.__TAURI__, but tauri.conf.json "
+        "does not set app.withGlobalTauri; the global is absent at runtime and "
+        "the frontend throws on its first line"
+    )
+
+
 def test_the_interface_script_parses():
     """Nothing else in this repo ever parses the frontend.
 

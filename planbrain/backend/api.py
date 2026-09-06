@@ -520,6 +520,84 @@ def plan_risks(state, limit: int = 50, worst_first: bool = False) -> dict:
     )
 
 
+def override_set(state, sku_id: int, bucket_date: str, qty: float,
+                 author: str, reason: str, loc_id: int = None) -> dict:
+    """Fix a quantity, with a person and a reason against it.
+
+    `bucket_date` is the date the material is NEEDED, not the date the order
+    goes out. A firm planned order fixes the receipt; the release is derived
+    from it by the lead-time offset like any other receipt. Fixing a release
+    date instead would put supply in a bucket the plan was not receiving in,
+    which adds to the plan rather than replacing anything.
+    """
+    from datetime import date
+
+    from .. import overrides
+
+    if state.demo is None:
+        raise ValueError("no dataset loaded; nothing to override")
+    loc = loc_id if loc_id is not None else _production_location(state)
+    overrides.set_override(
+        state.con, sku_id=sku_id, loc_id=loc,
+        bucket_date=date.fromisoformat(bucket_date), qty=float(qty),
+        author=author, reason=reason,
+    )
+    state.con.commit()
+    return {"sku_id": sku_id, "loc_id": loc, "bucket_date": bucket_date,
+            "qty": float(qty),
+            "rerun_required": True}
+
+
+def override_clear(state, sku_id: int, bucket_date: str, loc_id: int = None) -> dict:
+    """Hand the bucket back to the engine."""
+    from datetime import date
+
+    from .. import overrides
+
+    if state.demo is None:
+        raise ValueError("no dataset loaded; nothing to clear")
+    loc = loc_id if loc_id is not None else _production_location(state)
+    overrides.clear_override(
+        state.con, sku_id=sku_id, loc_id=loc,
+        bucket_date=date.fromisoformat(bucket_date),
+    )
+    state.con.commit()
+    return {"sku_id": sku_id, "loc_id": loc, "bucket_date": bucket_date,
+            "rerun_required": True}
+
+
+def override_list(state, limit: int = 50) -> dict:
+    """Which numbers in this plan are a person's, and whose.
+
+    Also returns `disagreements` from `overrides.audit`: a fixed quantity with
+    nobody behind it, or a reason with no quantity. Either leaves a plan
+    half-explained, which is worse than an unexplained one because a reader
+    cannot tell which they are looking at.
+    """
+    from .. import overrides
+
+    if state.demo is None:
+        raise ValueError(
+            "no dataset loaded; call demo.build for the worked example, or "
+            "import your own data first"
+        )
+    report = overrides.summary(state.con, state.demo, limit=limit)
+    report["disagreements"] = overrides.audit(state.con, state.demo)
+    return report
+
+
+def _production_location(state) -> int:
+    """Where the plan is netted, which is where a firm order applies.
+
+    `netreq` explodes against a single production location, so an override
+    without an explicit location belongs there rather than at whichever depot
+    happens to be first.
+    """
+    return next(
+        loc.loc_id for loc in state.demo.locations if loc.kind == "plant"
+    )
+
+
 def plan_export(state, path: str, action: str = None) -> dict:
     """Write the whole order list to a file the user named. Returns what it wrote.
 
@@ -562,6 +640,9 @@ METHODS = {
     "plan.run": plan_run,
     "plan.orders": plan_orders,
     "plan.risks": plan_risks,
+    "override.set": override_set,
+    "override.clear": override_clear,
+    "override.list": override_list,
     "plan.export": plan_export,
     "import.check": import_check,
     "import.columns": import_columns,

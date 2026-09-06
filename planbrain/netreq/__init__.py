@@ -13,6 +13,7 @@ A fixture failure therefore points at the arithmetic, not the plumbing.
 from .adapters import (
     OUTPUT_MEASURES,
     GrossReqSourceError,
+    read_firm_orders,
     read_scheduled_receipts,
     resolve_gross_req,
     write_plans,
@@ -69,6 +70,14 @@ def run(con, demo, *, scenario_id: int = 0, source: str = "naive_replay",
         horizon_end=demo.horizon_end,
         source=source,
     )
+    firm = read_firm_orders(
+        con,
+        scenario_id=scenario_id,
+        sku_ids=sku_ids,
+        loc_id=production_loc,
+        horizon_start=demo.horizon_start,
+        horizon_end=demo.horizon_end,
+    )
     receipts = read_scheduled_receipts(
         con,
         scenario_id=scenario_id,
@@ -91,6 +100,7 @@ def run(con, demo, *, scenario_id: int = 0, source: str = "naive_replay",
         independent_demand=independent,
         on_hand=on_hand,
         scheduled_receipt=receipts,
+        firm_planned_order=firm,
         buckets=buckets,
         production_loc=production_loc,
         working_buckets=[

@@ -1,9 +1,11 @@
 # Letting the planner disagree
 
-**Status: designed, not built.** This document is the design put up for review
-before any of it is written, because it changes the measure vocabulary — which
-is a contract, not an implementation detail. Nothing in `planbrain` implements
-it yet.
+**Status: built, 2026-09-06.** `planbrain/overrides.py`,
+`planbrain/netreq/core.py`, `tests/test_overrides.py` and
+`tests/test_netreq_firm.py`. Everything above the last section was written as a
+design and put up for review *before* any of it existed, because it adds to the
+measure vocabulary — which is a contract, not an implementation detail. It is
+left as written so the design and the result can be compared.
 
 ## Why this is not a feature request
 
@@ -122,3 +124,48 @@ survives the next run *as an override*, and stays visible as one.
 cheapest thing to build and it would be worse than nothing: the planner writes
 down what they know, the plan ignores it, and the numbers are now wrong *and*
 annotated.
+
+
+## What building it settled
+
+**An override fixes the RECEIPT bucket — the day the material is needed — not
+the release date the order list shows.** The design above said "quantity and
+date" without saying which date, and the two are not interchangeable. The first
+end-to-end test fixed a quantity of 1 against a release date and the plan came
+back with **40,001**: that release bucket was not one the plan was receiving in,
+so the firm supply landed beside the existing order instead of replacing it.
+
+Receipts are where netting happens and where "replace this quantity" means
+something; a release is derived from a receipt by the lead-time offset like any
+other. So the interface asks for *needed on*, says so on the form, and
+`override.set` takes that date. It is the same distinction the order list
+already refuses to blur — it reports releases and will not print a receipt date
+beside them, because the two are not one-to-one.
+
+**The engine does not top a firm order up, and the shortfall is not hidden
+either.** A firm bucket is fixed entirely: `plan_item` passes the quantity
+through and lot-sizes nothing on top of it. What the planner did not supply
+lowers the projected balance, which surfaces as a shortage on the risk screen,
+and ordinary netting plans the deficit in a *later* bucket exactly as it would
+after any other shortfall. Capping a batch says "not this much, this week" — it
+does not delete the requirement.
+
+**Wagner-Whitin needed no special case.** A firm bucket contributes zero to the
+requirement vector the DP sees, so the only way a lot could land in one is if
+the DP chose it as the order point for later demand — and that is never cheaper,
+because ordering earlier holds the same units for more periods and `LotSizing`
+already refuses a Wagner-Whitin policy with a non-positive holding cost. The
+published Snyder & Shen instance is untouched, which is the check that says the
+DP was not disturbed.
+
+**The `derived = 0` classification did the work it was chosen for.** A planning
+run cannot overwrite a firm order because `write_plans` already refuses to write
+a non-derived measure — a rule that existed, in one place, before this feature
+did. No new protection was added, which was the argument for the classification
+and is now the evidence for it.
+
+**The two stores are audited rather than trusted.** `overrides.audit()` reports
+any address where a fixed quantity has no author and reason, or a reason has no
+quantity behind it, and the interface shows those instead of the override list.
+A plan that is half-explained is worse than an unexplained one, because a reader
+cannot tell which they are looking at.

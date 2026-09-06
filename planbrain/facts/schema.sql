@@ -66,6 +66,12 @@ CREATE TABLE measure (
 INSERT INTO measure (measure, grain, unit, derived, description) VALUES
     ('demand_actual',         'supply_demand', 'qty',   0, 'Historical shipped or consumed quantity, from the system of record'),
     ('scheduled_receipt',     'supply_demand', 'qty',   0, 'Confirmed open PO or work order due in this bucket'),
+    -- derived = 0 DELIBERATELY. A firm planned order is an INPUT authored by a
+    -- human, in the same class as a confirmed PO, so `write_plans`'s existing
+    -- refusal to write a non-derived measure already stops a planning run from
+    -- overwriting it. No new rule was needed to protect it, which is the
+    -- reason this classification was chosen over inventing one.
+    ('firm_planned_order',    'supply_demand', 'qty',   0, 'Quantity fixed by a planner; a planning run nets around it and never resizes or reschedules it'),
     ('forecast',              'supply_demand', 'qty',   1, 'Statistical forecast of independent demand'),
     ('gross_req',             'supply_demand', 'qty',   1, 'Total requirement: independent demand plus dependent demand from BOM explosion'),
     -- A LEVEL, not a flow: it carries across buckets, so a slow mover stores
@@ -108,6 +114,26 @@ CREATE TABLE fact_supply_demand (
     scenario_id  INTEGER NOT NULL REFERENCES scenario (scenario_id),
     qty          NUMERIC NOT NULL,
     PRIMARY KEY (sku_id, loc_id, bucket_date, measure, scenario_id)
+);
+
+-- Who fixed a quantity, and why. The quantity itself is NOT here: it lives in
+-- the `firm_planned_order` measure and only there, because two copies of a
+-- number is two numbers. This table answers "who and why"; the fact table
+-- answers "how much"; `tests/test_overrides.py` asserts the two agree about
+-- which addresses exist.
+--
+-- `reason` is NOT NULL and must be non-empty. An override with no reason is
+-- indistinguishable in three weeks from a typo, and the person who has to work
+-- that out is usually the person who typed it.
+CREATE TABLE plan_override (
+    sku_id       INTEGER NOT NULL,
+    loc_id       INTEGER NOT NULL,
+    bucket_date  DATE    NOT NULL,
+    scenario_id  INTEGER NOT NULL REFERENCES scenario (scenario_id),
+    author       TEXT    NOT NULL CHECK (length(trim(author)) > 0),
+    reason       TEXT    NOT NULL CHECK (length(trim(reason)) > 0),
+    created_at   TEXT    NOT NULL,
+    PRIMARY KEY (sku_id, loc_id, bucket_date, scenario_id)
 );
 
 CREATE TABLE fact_capacity (

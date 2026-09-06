@@ -43,6 +43,7 @@ CALLS = (
     ("plan.run", {}),
     ("plan.risks", {"limit": 50, "worst_first": False}),
     ("plan.orders", {"limit": 100}),
+    ("override.list", {"limit": 50}),
     ("profile.list", {}),
 )
 
@@ -134,6 +135,25 @@ DRIVE = """
 
 
 def build(out: Path) -> Path:
+    # Refuse to stub the bridge unless the real application would have one.
+    #
+    # This harness defines `window.__TAURI__` in order to replay replies, and
+    # for one release that hid the fact that the shipped application had no
+    # such global at all: `withGlobalTauri` was absent, the frontend threw on
+    # its first line, and every button in the window was dead while this
+    # rendered perfectly. A stub that supplies the thing whose absence is the
+    # bug cannot find that bug, so it refuses to try.
+    conf = json.loads(
+        (ROOT / "desktop" / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8")
+    )
+    if not conf.get("app", {}).get("withGlobalTauri", False):
+        raise SystemExit(
+            "tauri.conf.json does not set app.withGlobalTauri, so the real "
+            "application has no window.__TAURI__ and its frontend cannot run. "
+            "Rendering it here with a stubbed global would be a picture of "
+            "something that does not work."
+        )
+
     ready, replies = capture()
     index = INDEX.read_text(encoding="utf-8")
 

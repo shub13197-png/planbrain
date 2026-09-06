@@ -122,6 +122,31 @@ def read_scheduled_receipts(
     return receipts
 
 
+def read_firm_orders(
+    con, *, scenario_id: int, sku_ids, loc_id: int, horizon_start, horizon_end
+) -> dict:
+    """Quantities a planner has fixed, keyed by sku_id.
+
+    Read exactly like scheduled receipts because they are the same *kind* of
+    thing -- supply the run must not change -- differing only in who authored
+    them. What differs is downstream: `plan_item` passes a firm quantity
+    through untouched and plans nothing else in that bucket.
+    """
+    rows = read_facts(
+        con, TABLE,
+        scenario_id=scenario_id, measure="firm_planned_order",
+        start=horizon_start, end=horizon_end,
+        keys=[(sku, loc_id) for sku in sku_ids],
+    )
+    firm = {}
+    for row in rows:
+        series = firm.setdefault(
+            row.keys[0], [0.0] * ((horizon_end - horizon_start).days + 1)
+        )
+        series[(row.bucket_date - horizon_start).days] += row.qty
+    return firm
+
+
 def write_plans(con, plans, *, scenario_id: int, horizon_start, horizon_end, gross_by_sku) -> dict:
     """Persist a netreq run. Returns rows written per measure.
 

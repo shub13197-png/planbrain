@@ -57,14 +57,19 @@ def explode(
     scheduled_receipt: dict,
     buckets: int,
     production_loc: int,
+    firm_planned_order: dict = None,
     working_buckets: list = None,
     lot_sizing_override: dict = None,
 ) -> list:
     """Plan every SKU, top-down through the BOM. Returns one ItemPlan per SKU.
 
-    ``independent_demand`` and ``scheduled_receipt`` are dense series keyed by
-    sku_id; ``on_hand`` is a scalar per sku_id, being a stock position rather
-    than a series.
+    ``independent_demand``, ``scheduled_receipt`` and ``firm_planned_order`` are
+    dense series keyed by sku_id; ``on_hand`` is a scalar per sku_id, being a
+    stock position rather than a series.
+
+    A firm planned order is a quantity a planner has fixed. It reaches
+    ``plan_item`` untouched and is never resized or rescheduled -- see
+    ``Item.firm_planned_order``.
     """
     by_sku = {p.sku_id: p for p in parts}
     codes = low_level_codes(bom, by_sku)
@@ -95,6 +100,7 @@ def explode(
             lot_sizing=_lot_sizing_for(part, lot_sizing_override),
             gross_req=gross,
             scheduled_receipt=scheduled_receipt.get(sku_id, zeros),
+            firm_planned_order=(firm_planned_order or {}).get(sku_id),
             working_buckets=working_buckets,
         ))
         plans.append((plan, gross))

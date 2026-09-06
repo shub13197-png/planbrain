@@ -2047,3 +2047,143 @@ last two days, and the reason the offline container job earns its runtime.
 Now asserted with a POSIX-shaped value and an exact expected path, so it checks
 what is actually under test — the win32 branch reads LOCALAPPDATA and lands
 `PlanningBrain/planning.db` beneath it — rather than how a string is split.
+
+## 2026-09-06 — Overrides, built, and the date nobody had specified
+
+`docs/overrides.md` was written as a design and reviewed before any of it
+existed. Building it changed one thing in that design and confirmed the rest.
+
+**The design said "quantity and date" and did not say *which* date.** A firm
+planned order fixes the RECEIPT bucket — the day the material is needed — not
+the release date the order list happens to show. The first end-to-end test fixed
+a quantity of 1 against a release date and the plan came back with **40,001**:
+that bucket was not one the plan was receiving in, so the firm supply landed
+*beside* the existing order instead of replacing it. Netting happens on
+receipts, which is where "replace this quantity" has a meaning; a release is
+derived from a receipt by the lead-time offset like any other. The form now asks
+for *needed on* and says so.
+
+That is the same distinction the order list already refuses to blur, and the
+same reason it will not print a receipt date beside a release.
+
+**The engine does not top a firm order up.** A firm bucket is fixed entirely and
+`plan_item` lot-sizes nothing on top of it. An engine that restored 860 where a
+planner wrote 500 would leave them arguing with a number that always wins, which
+is the failure mode that makes overrides worth having in the first place. What
+the planner did not supply lowers the projected balance and surfaces as a
+shortage; ordinary netting then plans the deficit in a *later* bucket, exactly
+as it would after any other shortfall. Capping a batch says "not this much, this
+week" — it does not delete the requirement, and an early version of the test
+wrongly asserted that it did.
+
+**Wagner-Whitin needed no special case, and this was checked rather than
+assumed.** A firm bucket contributes zero to the requirement vector the DP sees,
+so a lot could only land in one if the DP chose it as the order point for later
+demand — never cheaper, because ordering earlier holds the same units longer and
+`LotSizing` already refuses this policy with a non-positive holding cost. The
+published Snyder & Shen instance is untouched, which is the evidence the DP was
+not disturbed.
+
+**`derived = 0` did the work it was chosen for.** A run cannot overwrite a firm
+order because `write_plans` already refuses to write a non-derived measure. That
+rule existed, in one place, before this feature; no new protection was added.
+
+**Rejected: raw SQL to forge the audit's failure case.** The fact-access lint
+caught an `INSERT` that forged a quantity with no provenance. It was right, and
+so was the fix: `write_facts` produces exactly that orphan on its own, because
+it writes the measure and knows nothing about provenance. Reaching around the
+accessor would have tested `audit` against a state the application cannot reach.
+
+## 2026-09-06 — Two Windows installers, because one file cannot keep both promises
+
+The WebView2 question, decided. The default `.msi` and `-setup.exe` embed the
+**bootstrapper** — roughly 150 MB, inside the committed budget, one network call
+during install and only on a machine that lacks the runtime. A third file,
+`…-offline.msi`, embeds the runtime at roughly 330 MB and installs with no
+network at all.
+
+Neither alone was defensible. Only-offline makes every Windows user download 180
+MB of runtime most machines already have, over the rural connection the budget
+exists to respect. Only-bootstrapper makes "no network access at any point"
+false for the machine that has none, which is the machine this product is for.
+
+**The gate now holds two budgets, and that is not the same act as raising one.**
+150 MB for every installer, 400 MB for a file whose name carries `-offline`. A
+*standard* installer at 330 MB still fails: the budget is chosen by name, not by
+size, so the variant allowed to be large cannot be confused with one that has
+quietly become large. Both branches are exercised before the gate was trusted.
+
+400 rather than 330 deliberately: a budget set flush against today's measurement
+fails on the next dependency, which teaches people to edit budgets.
+
+## 2026-09-06 — The Linux AppImage cannot reach 150 MB, and that is left failing
+
+Diagnosed with the artifact the previous commit made available: moving
+`upload-artifact` ahead of the size gate meant the *failed* Linux job still
+uploaded what it built, which is the first time that change paid for itself.
+
+There is no bloat. The AppImage is essentially the sidecar and the sidecar is
+accounted for to the megabyte — scipy 46, numpy and its libs 47, pandas 17,
+statsmodels 7, CPython 7, everything else about 31, total 155 MB uncompressed
+against its own 400 MB budget. Nothing unexplained, nothing unused:
+`statsforecast` needs all of it and it is what fits AutoETS, Croston and TSB.
+
+**So the 150 MB per-file budget is not achievable on Linux while this dependency
+set ships.** It was committed before the first build, which is the right way
+round, and three builds have now measured what a Python scientific stack weighs.
+
+**Left failing rather than fixed by editing the number.** The options are
+trimming scipy and numpy with PyInstaller excludes (real work, testable only in
+CI, unknown yield), dropping a dependency (drops the forecasting), or
+re-deriving the Linux budget from the measurement and publishing the accounting.
+The third is probably right and it is still a decision — and a budget quietly
+raised by the person whose build it was failing is exactly the move
+`docs/packaging.md` exists to make visible.
+
+## 2026-09-06 — CORRECTION: the status bar was stuck for a different reason
+
+**The diagnosis published on 2026-09-04 was wrong, and it was published as
+fact.** That entry says the status bar read `starting…` because the backend's
+opening line was emitted before the interface attached its listeners and was
+dropped. A fix was written, committed, described in the README and in a commit
+message, and shipped.
+
+Installing the build that contained it and launching it: the status bar still
+read `starting…`.
+
+**The real cause is that the interface has never run at all.** The frontend
+opens with
+
+    const { invoke } = window.__TAURI__.core;
+
+and `withGlobalTauri` was absent from `tauri.conf.json`. It defaults to **false**
+in Tauri v2, so `window.__TAURI__` did not exist and that line threw
+`TypeError: Cannot read properties of undefined` before a single handler was
+attached. The window rendered because the HTML and CSS are static. Every button
+in it was dead, on every launch, from the first one.
+
+Found by clicking *Load the worked example* on the installed application and
+watching nothing happen. The screenshot taken two days earlier showed the same
+window and was read as "renders, but the status line is stuck" — the button had
+never been pressed.
+
+**What was actually true about the first diagnosis:** the dropped-line race is
+real, `drain_backend` fixes it, and it would have bitten the moment the frontend
+started working. It was a latent bug found by reading, presented as the cause of
+an observed symptom it did not cause. The fix stays. The claim does not.
+
+**Three checks failed to catch this and each was looking at one file.** The
+frontend's use of the global is internally consistent. The config is valid JSON.
+The capability is valid. The disagreement is *between* the frontend and the
+config, which is exactly what `tests/test_desktop_shell.py` exists for, and no
+rule there asserted this particular pair. There is one now.
+
+**`tools/render_ui.py` masked it, and that is the sharper lesson.** The harness
+defines `window.__TAURI__` in order to stub replies, so it rendered the
+application perfectly while the real one was inert. **A harness that supplies
+the thing whose absence is the bug cannot find that bug.** It now refuses to run
+unless the config would have provided the global for real.
+
+**And the standing rule was right and was not followed far enough.** "Launch the
+artefact" was the lesson recorded on 2026-09-04. Launching it is not enough:
+the window opening proves the shell starts, and nothing more. Press a button.

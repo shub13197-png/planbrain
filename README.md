@@ -326,19 +326,23 @@ after seeing a result cannot masquerade as one written before it.
   anyone launched it, it was broken. The Tauri wrapper is checked here only by
   cross-file rules — the path the shell resolves against the path the bundle
   installs, the plugins the frontend calls against the crates that provide them.
-  A CI-built Windows installer was eventually downloaded, checksum-verified,
-  extracted and run: the window opened and rendered, and the status bar read
-  `starting…` forever, because the backend's opening line was emitted before the
-  interface had attached its listeners and was dropped on every launch. Nothing
-  in either file was wrong; the *order* was. It is fixed and buffered now, and
-  the fix has not itself been launched — see [`docs/decisions.md`](docs/decisions.md).
-  **Cross-file rules cannot see a race, and this is the standing reason to keep
-  launching the thing.**
-* **A planner cannot overrule the plan.** The order list says what the
-  arithmetic wants; a planner who knows a customer committed verbally, or that a
-  machine is down on Tuesday, has nowhere to put that. The mechanism is designed
-  — the textbook firm planned order, with provenance beside the fact rather than
-  inside it — and deliberately not yet built, in
+  A CI-built Windows installer was downloaded, checksum-verified, extracted and
+  run. The window opened and rendered — and **every button in it was dead.**
+  `withGlobalTauri` was absent from `tauri.conf.json`, which defaults to false,
+  so `window.__TAURI__` did not exist and the interface threw on its first line
+  before attaching a single handler. It had never run, on any launch.
+
+  The first diagnosis of that screen — a race dropping the backend's opening
+  line — was **wrong, and was published as fact**; the correction is in
+  [`docs/decisions.md`](docs/decisions.md). The race is real and is fixed, but
+  it was not what anyone was looking at. **Launching the artefact is not enough:
+  the window opening proves the shell starts and nothing more. Press a button.**
+* **A planner can now overrule the plan, and the plan says so.** The textbook
+  firm planned order: fix a quantity on the day the material is needed, with
+  your name and a reason against it, and no run resizes or reschedules it. The
+  screen reports how many numbers in a plan are a person's, and whose. A capped
+  order that turns out too small shows its shortfall under *what is going to go
+  wrong* rather than being quietly topped back up.
   [`docs/overrides.md`](docs/overrides.md).
 * **Inventory value uses synthetic costs.** Working capital is now reported
   alongside units, but the demo's unit costs are generated, so the *ratios*
@@ -391,7 +395,7 @@ quietly excluding the hard ones is how a portfolio average gets improved.
 | [`docs/orders.md`](docs/orders.md) | The order list a planner acts on, and the gap it closed |
 | [`docs/benchmark.md`](docs/benchmark.md) | **Real demand, real incumbents** — the service/inventory frontier against a spreadsheet and an ERP's min/max, with the run it was written from committed beside it |
 | [`docs/status.md`](docs/status.md) | Where the work stands and what is next — read this first |
-| [`docs/overrides.md`](docs/overrides.md) | **Designed, not built** — letting a planner overrule the plan |
+| [`docs/overrides.md`](docs/overrides.md) | Letting a planner overrule the plan, and what building it settled |
 | [`docs/forecast.md`](docs/forecast.md) | Model selection and MASE, including its limits |
 | [`docs/rccp.md`](docs/rccp.md) | Rough-cut capacity, and what it does not yet prove |
 | [`docs/capacity-sizing.md`](docs/capacity-sizing.md) | How the demo plant was sized, written before it was run |

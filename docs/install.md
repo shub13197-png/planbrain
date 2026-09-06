@@ -10,6 +10,7 @@ matches your machine:
 | --- | --- |
 | Windows 10 or 11 | `Planning Brain_0.1.0_x64_en-US.msi` |
 | Windows, where policy blocks MSI installers | `Planning Brain_0.1.0_x64-setup.exe` |
+| Windows, on a machine with **no internet at all** | `Planning Brain_0.1.0_x64_en-US-offline.msi` |
 | Mac with Apple Silicon (M1 and later) | `Planning Brain_0.1.0_aarch64.dmg` |
 | Mac with an Intel processor | `Planning Brain_0.1.0_x64.dmg` |
 | Linux, any distribution | `planning-brain_0.1.0_amd64.AppImage` |
@@ -74,6 +75,28 @@ firewall, something is wrong — please report it.
 **If your workplace blocks MSI installers**, take the `-setup.exe` instead. It is
 the same application in an NSIS installer and installs per-user, which usually
 does not need an administrator.
+
+### Which Windows file, and why there are two
+
+**Take the ordinary `.msi` unless the machine has no internet at all.**
+
+Windows has no system browser engine an application can rely on being present,
+so this one carries Microsoft's WebView2. The two files differ only in how:
+
+| file | size | what it needs during install |
+| --- | --- | --- |
+| `…_x64_en-US.msi` | ~150 MB | fetches the WebView2 runtime, **only** if the machine does not already have it. Most do. |
+| `…_x64_en-US-offline.msi` | ~330 MB | nothing. The runtime is inside the file. |
+
+Once installed, both are identical and neither ever touches the network again —
+that guarantee is about the *application*, and it is audited in
+[`docs/offline.md`](offline.md).
+
+**Why not just ship the big one?** Because 180 MB of runtime that most machines
+already have is a poor thing to make a rural connection download. **Why not just
+ship the small one?** Because "no network access at any point" would stop being
+true for the machine that has none, which is exactly the machine this product is
+for. One file cannot keep both promises, so there are two.
 
 ## macOS
 
@@ -190,10 +213,11 @@ Nothing is uploaded at any step. There is no account and no sign-in screen.
 * **Your data stays in a file you can see.** Delete it and it is gone; copy it
   and you have a backup. There is no cloud copy because there is no cloud.
 
-The installer is large — roughly 150 MB — because the whole Python scientific
-stack ships inside it. That is the cost of an application with no runtime to
-install and no network to reach; [`docs/packaging.md`](packaging.md) accounts for
-every megabyte and gates the total against a committed budget.
+The installer is large — roughly 150 MB, or 330 MB for the Windows offline
+variant — because the whole Python scientific stack ships inside it. That is the
+cost of an application with no runtime to install and no network to reach;
+[`docs/packaging.md`](packaging.md) accounts for every megabyte and gates each
+file against a committed budget.
 
 ## Uninstalling
 

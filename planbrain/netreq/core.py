@@ -60,6 +60,17 @@ class Item:
     #: a release is pulled back to the previous working bucket. Passed as flags
     #: rather than as a calendar so this module stays free of dates.
     working_buckets: list = None
+    #: Quantities a planner has FIXED, aligned to the same spine. Zero, or an
+    #: absent series, means the engine decides that bucket as usual.
+    #:
+    #: A firm bucket is fixed **entirely**: the quantity passes through
+    #: unchanged and the engine plans nothing else there. That is what makes an
+    #: override worth offering -- an engine that topped a capped order back up
+    #: would leave the planner arguing with a number that always won. The
+    #: shortfall is not hidden either: it lowers the projected balance, which
+    #: surfaces as a shortage, and ordinary netting plans the deficit in a later
+    #: bucket the way it would after any other shortfall.
+    firm_planned_order: list = None
 
 
 @dataclass(frozen=True)
@@ -97,10 +108,26 @@ def plan_item(item: Item) -> ItemPlan:
             f"scheduled_receipt has {len(item.scheduled_receipt)} buckets, "
             f"gross_req has {n}; series must be spine-aligned"
         )
+    if item.firm_planned_order is not None and len(item.firm_planned_order) != n:
+        raise ValueError(
+            f"firm_planned_order has {len(item.firm_planned_order)} buckets, "
+            f"gross_req has {n}; series must be spine-aligned"
+        )
 
+    firm = _firm(item)
     if item.lot_sizing.policy == "wagner_whitin":
         net_req = _net_requirements(item)
-        receipts = _wagner_whitin_lots(net_req, item.lot_sizing)
+        # A firm bucket contributes nothing for the DP to order for: the
+        # planner has already fixed it. The DP therefore cannot top one up --
+        # the only way a lot could land in a firm bucket is if it were chosen
+        # as the order point for LATER demand, and ordering earlier is never
+        # cheaper when the holding cost is positive, which `LotSizing` already
+        # requires for this policy.
+        receipts = _wagner_whitin_lots(
+            [0.0 if f else need for need, f in zip(net_req, firm)],
+            item.lot_sizing,
+        )
+        receipts = [r + f for r, f in zip(receipts, firm)]
     else:
         net_req, receipts = _greedy_net_and_lot(item)
 
@@ -119,6 +146,13 @@ def plan_item(item: Item) -> ItemPlan:
     )
 
 
+def _firm(item: Item) -> list:
+    """The planner's fixed quantities, or a run of zeros when there are none."""
+    if item.firm_planned_order is None:
+        return [0.0] * len(item.gross_req)
+    return list(item.firm_planned_order)
+
+
 def _net_requirements(item: Item) -> list:
     """Requirement remaining after on-hand and scheduled receipts, ignoring lot sizing.
 
@@ -127,14 +161,20 @@ def _net_requirements(item: Item) -> list:
     covered exactly, which is true by construction: the planned receipts that
     Wagner-Whitin produces cover precisely these quantities.
     """
+    firm = _firm(item)
     balance = item.on_hand
     net = []
     for t in range(len(item.gross_req)):
-        balance += item.scheduled_receipt[t] - item.gross_req[t]
+        balance += item.scheduled_receipt[t] + firm[t] - item.gross_req[t]
         if balance < item.safety_stock:
             need = item.safety_stock - balance
             net.append(need)
-            balance = item.safety_stock
+            # The balance is only restored where the engine is free to cover
+            # the requirement. In a firm bucket it is not, so the shortfall
+            # stays on the books and the next bucket sees it -- which is how it
+            # reaches the projection as a shortage.
+            if not firm[t]:
+                balance = item.safety_stock
         else:
             net.append(0.0)
     return net
@@ -148,14 +188,21 @@ def _greedy_net_and_lot(item: Item):
     lot sizing cannot be separated for these policies the way they can for
     Wagner-Whitin.
     """
+    firm = _firm(item)
     balance = item.on_hand
     net, receipts = [], []
     for t in range(len(item.gross_req)):
-        balance += item.scheduled_receipt[t] - item.gross_req[t]
-        if balance < item.safety_stock:
-            need = item.safety_stock - balance
-            qty = _lot_size(need, item.lot_sizing)
-            net.append(need)
+        balance += item.scheduled_receipt[t] + firm[t] - item.gross_req[t]
+        shortfall = item.safety_stock - balance
+        if firm[t]:
+            # Fixed by the planner: pass the quantity through untouched, and do
+            # not lot-size anything on top of it. Whatever it leaves uncovered
+            # carries in the balance.
+            net.append(max(0.0, shortfall))
+            receipts.append(firm[t])
+        elif shortfall > 0:
+            qty = _lot_size(shortfall, item.lot_sizing)
+            net.append(shortfall)
             receipts.append(qty)
             balance += qty
         else:
@@ -238,6 +285,9 @@ def _project(item: Item, receipts: list) -> list:
     balance = item.on_hand
     projected = []
     for t in range(len(item.gross_req)):
+        # `receipts` already carries the firm quantities, so the firm series is
+        # deliberately absent here: adding it would count the planner's order
+        # twice and report stock that does not exist.
         balance += item.scheduled_receipt[t] + receipts[t] - item.gross_req[t]
         projected.append(balance)
     return projected
