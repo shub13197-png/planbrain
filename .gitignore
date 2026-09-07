@@ -10,6 +10,7 @@ venv/
 data/local/
 data/m5/
 data/online-retail/
+data/manufacturing/
 
 # packaging
 build/
