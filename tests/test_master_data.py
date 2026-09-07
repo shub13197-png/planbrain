@@ -146,3 +146,52 @@ def test_storing_twice_replaces_rather_than_duplicates(written):
     restored = load_master(con)
     con.close()
     assert len(restored.parts) == len(demo.parts)
+
+
+# --------------------------------------------------------------------------
+# a database written by an older version
+# --------------------------------------------------------------------------
+
+def test_a_database_from_before_these_tables_is_brought_up_to_date(tmp_path):
+    """**The upgrade path, which is the case that actually breaks users.**
+
+    `session()` applied the schema only to a database that had none, keyed on
+    the `scenario` table -- correct while the schema never changed, and silently
+    wrong the moment it did. An existing file kept its six tables, and the first
+    thing to touch a new one died with `no such table: stock_on_hand`.
+
+    Found by installing the product and running it against a database this
+    session had already created, which no test had reason to do.
+    """
+    path = tmp_path / "old.db"
+    con = sqlite3.connect(str(path))
+    # The schema as it stood before the master-data tables existed: everything
+    # up to the first of them.
+    full = (ROOT / "planbrain" / "facts" / "schema.sql").read_text(encoding="utf-8")
+    marker = "-- Master data: what the facts are ABOUT."
+    assert marker in full, "the master-data section banner moved; this test cuts on it"
+    con.executescript(full.split(marker)[0])
+    con.commit()
+    tables_before = {r[0] for r in con.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table'")}
+    con.close()
+    assert "scenario" in tables_before, "the cut-down schema is not a valid old database"
+    assert "part" not in tables_before, "the cut-down schema already has the new tables"
+
+    # Opening it must upgrade it, not refuse it and not leave it half-built.
+    state = api.session(str(path))
+    with state.con:
+        demo = build_demo(seed=7)
+        populate(state.con, demo)
+        store_master(state.con, demo)
+    state.con.close()
+
+    reopened = api.session(str(path))
+    assert reopened.demo is not None
+    scenarios = reopened.con.execute(
+        "SELECT count(*) FROM scenario WHERE scenario_id = 0").fetchone()[0]
+    reopened.con.close()
+    assert scenarios == 1, (
+        "upgrading an existing database seeded scenario 0 a second time, and "
+        "every read keyed on it would now find two"
+    )

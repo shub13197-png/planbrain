@@ -62,21 +62,26 @@ def default_database() -> Path:
 
 
 def session(path: str = ":memory:") -> Session:
-    """Open the planning database, creating it on first run.
+    """Open the planning database, creating or upgrading it as needed.
 
-    **The schema is applied only to a database that does not have one.**
-    `schema.sql` creates tables and seeds scenario 0, so running it against an
-    existing file raises `table scenario already exists` -- the application
-    would have died on its second launch. Succeeding would be worse: a second
-    seed row, and every read keyed on scenario 0 finding two.
+    **The schema is applied every time, and is written to be safe to reapply.**
+    It used to run only against a database with no schema at all, keyed on the
+    `scenario` table -- correct while the schema never changed, and silently
+    wrong the moment it did. When the master-data tables were added, an existing
+    file kept its old six and the first statement to touch a new one died with
+    `no such table`. A user who had ever opened the application before would
+    have been upgraded into a broken one.
+
+    So every `CREATE` is `IF NOT EXISTS` and both seeds are `INSERT OR IGNORE`:
+    reapplying adds what is missing and cannot produce a second scenario 0,
+    which would have every read keyed on it finding two.
     """
     if path != ":memory:":
         Path(path).parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(path)
     con.execute("PRAGMA foreign_keys = ON")
-    if not _has_schema(con):
-        con.executescript(SCHEMA_SQL.read_text(encoding="utf-8"))
-        con.commit()
+    con.executescript(SCHEMA_SQL.read_text(encoding="utf-8"))
+    con.commit()
     # The dataset the last session left behind, if any.
     #
     # **This is what made the application usable twice.** Facts were persisted
