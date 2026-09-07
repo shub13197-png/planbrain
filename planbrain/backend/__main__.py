@@ -45,7 +45,25 @@ PROTOCOL_VERSION = 1
 
 
 def handle(request: dict, state) -> dict:
-    """Dispatch one request. Never raises."""
+    """Dispatch one request, and make one request the transaction boundary.
+
+    Never raises.
+
+    **A request is a transaction.** SQLite opens an implicit transaction on the
+    first write and holds it until someone commits. Nothing did: the only
+    commits in the product were the schema creation and the two override
+    methods, so a demo build, a mapping commit and a plan run stayed
+    uncommitted until the shell killed the sidecar on window close -- and
+    SQLite rolled them back on the next open. A planner who mapped a Tally
+    export and ran a plan lost both. The file was there; the rows were not.
+
+    The commit sits *inside* this try, not in the caller's loop, for two
+    reasons. A commit can fail for reasons the request did not cause -- a full
+    disk, a locked file -- and committing out here would make that a crash in a
+    process whose whole contract is that it answers instead of dying. And this
+    is the boundary a Django view or a queue worker needs, so it belongs with
+    the dispatch rather than with the pipe that happens to feed it.
+    """
     request_id = request.get("id")
     method = request.get("method")
 
@@ -53,7 +71,14 @@ def handle(request: dict, state) -> dict:
         return _error(request_id, "UnknownMethod",
                       f"no method {method!r}; known: {sorted(METHODS)}")
     try:
-        result = METHODS[method](state, **(request.get("params") or {}))
+        # `with con:` commits on the way out and rolls back on an exception,
+        # which is the whole contract in one line -- and the line
+        # `planbrain/overrides.py` already uses. The commit lands before the
+        # reply is built, so `ok: true` means the write is on disk rather than
+        # merely intended, and a half-applied import cannot outlive the error
+        # that stopped it.
+        with state.con:
+            result = METHODS[method](state, **(request.get("params") or {}))
         return {"id": request_id, "ok": True, "result": result}
     except TypeError as exc:
         # Almost always a bad params shape from the frontend, which is a caller

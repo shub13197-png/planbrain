@@ -13,6 +13,7 @@ import tomllib
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -78,11 +79,21 @@ def test_nothing_is_imported_before_engage_runs():
 # --------------------------------------------------------------------------
 
 def _talk(requests):
+    """Speak the protocol to a throwaway database.
+
+    **Never the default.** With no `--db` the entry point opens the real
+    per-user file named in `docs/install.md` -- the one holding a planner's
+    imported history -- and the suite would be running against it. That was
+    harmless only for as long as nothing committed; a request is now a
+    transaction, so any writing method added here would land in it for real.
+    """
     payload = "\n".join(json.dumps(r) for r in requests) + "\n"
-    result = subprocess.run(
-        [sys.executable, "-m", "planbrain.backend"],
-        input=payload, capture_output=True, text=True, timeout=300, cwd=ROOT,
-    )
+    with tempfile.TemporaryDirectory() as scratch:
+        result = subprocess.run(
+            [sys.executable, "-m", "planbrain.backend",
+             "--db", str(Path(scratch) / "planning.db")],
+            input=payload, capture_output=True, text=True, timeout=300, cwd=ROOT,
+        )
     return [json.loads(line) for line in result.stdout.strip().splitlines()], result
 
 
