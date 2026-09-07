@@ -204,6 +204,60 @@ def achieved_fill_rate(history, level: float, *, lead_time_days: int,
     return 1.0 - fmean([max(0.0, d - level) for d in sums]) / mean_demand
 
 
+def level_by_simulation(evaluate, *, target: float, hi: float, steps: int = 18) -> float:
+    """The smallest base stock whose *simulated* service reaches ``target``.
+
+    ``evaluate(level) -> fill_rate`` replays the policy at that level and
+    reports what it achieved, or None if the window held no demand.
+
+    **Why simulate rather than derive.** Every other rule in this module fits a
+    distribution to the whole training window and inverts it. That is exact for
+    a stationary series and wrong for a drifting one: a manufacturer with six
+    years of history gets stocked for regimes that ended -- the level implied by
+    its recent year is 13% lower at the median -- and a twelve-week moving
+    average in a spreadsheet beats this product on share of demand served for
+    precisely that reason. Handing the caller a window and asking what actually
+    happened in it sidesteps the fitting question rather than answering it
+    better.
+
+    Service is non-decreasing in the base stock of an order-up-to policy, so a
+    bisection converges. Eighteen halvings put the answer inside 0.0004% of the
+    range, which is far below the granularity any of this is acted on at.
+
+    Returns 0 when the window held no demand -- a part nobody ordered needs no
+    stock, and reading an empty window as failure would stock it to the ceiling.
+    Returns ``hi`` when nothing in range reaches the target, which is the honest
+    answer: the most stock the caller allowed, rather than a number that looks
+    like a solution.
+
+    Approach: simulation-based parameter search, as used for (s, Q) and (R, S)
+    policies in ikatsov/tensor-house (Apache-2.0). Implemented rather than
+    imported -- the library that covers this ground for intermittent demand,
+    Valdecy/pyInterDemand, is GPL-3.0 and the licence gate in CLAUDE.md excludes
+    it.
+    """
+    if not 0.0 < target < 1.0:
+        raise ValueError(
+            f"target service is a fraction strictly between 0 and 1, got {target!r}"
+        )
+    if hi <= 0:
+        return 0.0
+    if evaluate(hi) is None:
+        return 0.0
+    if evaluate(hi) < target:
+        return float(hi)
+
+    lo, best = 0.0, float(hi)
+    for _ in range(steps):
+        mid = (lo + hi) / 2
+        got = evaluate(mid)
+        if got is not None and got >= target:
+            best, hi = mid, mid
+        else:
+            lo = mid
+    return best
+
+
 def level_for_exceedance(history, *, lead_time_days: int, review_every: int = 1,
                          exceedance: float) -> float:
     """The smallest base stock a part's demand exceeds no more than ``exceedance``.

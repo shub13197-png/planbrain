@@ -16,6 +16,7 @@ import pytest
 
 from planbrain.simulate.policies import (
     achieved_fill_rate,
+    level_by_simulation,
     level_for_exceedance,
     order_up_to_for_fill_rate,
     safety_stock_for_service,
@@ -290,3 +291,50 @@ def test_it_serves_more_than_equal_fill_rate_for_the_same_stock():
 def test_an_exceedance_that_is_not_a_probability_is_refused(bad):
     with pytest.raises(ValueError, match="between 0 and 1"):
         level_for_exceedance(SPIKY, lead_time_days=6, exceedance=bad)
+
+
+# --------------------------------------------------------------------------
+# choosing the level by simulating it, rather than deriving it
+# --------------------------------------------------------------------------
+
+def test_it_finds_the_smallest_level_that_reaches_the_target():
+    """The level is read off a simulation of the policy, not off a formula.
+
+    Every analytic rule here fits a distribution to the *whole* training window.
+    A manufacturer with six years of history is then stocked for regimes that
+    ended -- the level implied by its recent year is 13% lower at the median --
+    and a twelve-week moving average in a spreadsheet beats it on share of
+    demand served for exactly that reason. Simulating on a recent window
+    sidesteps the fitting question: what matters is what the policy would have
+    done lately.
+    """
+    evaluate = lambda level: min(1.0, level / 200.0)
+    got = level_by_simulation(evaluate, target=0.9, hi=400.0)
+    assert got == pytest.approx(180.0, abs=1.0)
+    assert evaluate(got) >= 0.9
+
+
+def test_an_unreachable_target_spends_the_budget_rather_than_pretending():
+    """No level in range reaches it, so the honest answer is the most stock the
+    caller allowed -- not a number that looks like a solution."""
+    assert level_by_simulation(lambda level: 0.4, target=0.9, hi=400.0) == 400.0
+
+
+def test_a_window_with_no_demand_asks_for_no_stock():
+    """`Outcome.fill_rate` is None when nothing was demanded. Reading that as
+    success would stock a part nobody ordered; reading it as failure would stock
+    it to the ceiling."""
+    assert level_by_simulation(lambda level: None, target=0.9, hi=400.0) == 0.0
+
+
+@pytest.mark.parametrize("bad", [0.0, 1.0, -0.2, 1.4])
+def test_a_simulated_target_that_is_not_a_fraction_is_refused(bad):
+    with pytest.raises(ValueError, match="strictly between 0 and 1"):
+        level_by_simulation(lambda level: 0.5, target=bad, hi=400.0)
+
+
+def test_more_simulated_service_never_asks_for_less_stock():
+    evaluate = lambda level: min(1.0, level / 200.0)
+    levels = [level_by_simulation(evaluate, target=t, hi=400.0)
+              for t in (0.5, 0.75, 0.9, 0.99)]
+    assert levels == sorted(levels)

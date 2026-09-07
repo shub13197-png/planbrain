@@ -30,6 +30,7 @@ from .policies import (
     moving_average_cover,
     naive_zero_order_up_to,
     reorder_point,
+    level_by_simulation,
     level_for_exceedance,
     order_up_to_for_fill_rate,
     safety_stock_for_service,
@@ -39,13 +40,24 @@ TABLE = "fact_supply_demand"
 
 POLICIES = ("forecast", "moving_average", "naive_zero", "reorder_point",
             "reorder_point_stale", "fill_rate_base", "forecast_fill_rate",
-            "forecast_seasonal", "seasonal_fill_rate", "marginal_allocation")
+            "forecast_seasonal", "seasonal_fill_rate", "marginal_allocation",
+            "simulated_recent")
 
 #: Buckets the spreadsheet baseline averages over. Twelve weeks, because "take
 #: the last three months" is the rule a planner without software actually
 #: applies -- not a value tuned until this product won. Committed here and in
 #: docs/constants.md before the comparison was run.
 MOVING_AVERAGE_DAYS = 84
+
+#: How much of the recent past `simulated_recent` fits its level on.
+#:
+#: A year, not a quarter. The spreadsheet policy above uses 84 days and beats
+#: this product on share of demand served for a manufacturer whose demand has
+#: drifted -- but 84 days cannot contain an annual season, so copying it would
+#: trade one bias for another. A year is the shortest window that holds a full
+#: cycle while discarding the five older years that the analytic rules were
+#: still fitting to.
+RECENT_DAYS = 365
 
 #: Fraction of the training history the stale reorder point is fitted on. It is
 #: then never revisited, which is what an SME incumbent actually looks like: the
@@ -62,6 +74,7 @@ __all__ = [
     "demand_statistics",
     "achieved_fill_rate",
     "forecast_order_up_to",
+    "level_by_simulation",
     "level_for_exceedance",
     "order_up_to_for_fill_rate",
     "moving_average_cover",
@@ -288,6 +301,28 @@ def compare(
             ),
             "naive_zero": naive_zero_order_up_to(
                 lead_time_days=lead_time, safety_stock=safety
+            ),
+            # The level read off a simulation of the policy on the recent
+            # past, rather than derived from a distribution fitted to all of it.
+            # Every other rule here fits the whole training window; this one
+            # asks what the policy would actually have done lately.
+            "simulated_recent": naive_zero_order_up_to(
+                lead_time_days=lead_time,
+                safety_stock=(
+                    level_by_simulation(
+                        lambda lvl: replay(
+                            train[-RECENT_DAYS:],
+                            naive_zero_order_up_to(lead_time_days=lead_time,
+                                                   safety_stock=lvl),
+                            initial_on_hand=mean * (lead_time + 1),
+                            lead_time_days=lead_time, unmet=unmet,
+                        ).fill_rate,
+                        target=safety_service_level,
+                        hi=max(mean * (lead_time + 1) * 6, 1.0),
+                    )
+                    if safety_service_level is not None and len(train) > lead_time + 2
+                    else 0.0
+                ),
             ),
             # Stock allocated across the portfolio rather than per part.
             # Equal *service* per part is not the same as spending the last unit
