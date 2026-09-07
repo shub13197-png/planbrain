@@ -2187,3 +2187,233 @@ unless the config would have provided the global for real.
 **And the standing rule was right and was not followed far enough.** "Launch the
 artefact" was the lesson recorded on 2026-09-04. Launching it is not enough:
 the window opening proves the shell starts, and nothing more. Press a button.
+
+## 2026-09-06 — A request is the transaction boundary
+
+**Decided.** `handle()` in `planbrain/backend/__main__.py` commits on a
+successful response and rolls back on an error frame. One request in, one
+transaction.
+
+**The bug.** `sqlite3.connect()` is opened with default transaction handling, so
+the first write of any request opens an implicit transaction that is held until
+someone commits. Only three places ever did: the schema creation and the two
+override methods. Demo build, mapping commit and plan run never committed. The
+Tauri shell then kills the sidecar on `WindowEvent::Destroyed` without sending
+`shutdown`, Python runs no cleanup on a kill, and SQLite rolls the transaction
+back on the next open. **A planner who mapped a Tally export and ran a plan lost
+both, and the file sitting there made it look like they had not.**
+
+**Why the suite was green through all of it.** `tests/test_persistence.py`
+called `first.con.commit()` itself, supplying the very thing the application
+lacked — the same shape of failure as the `render_ui.py` harness defining
+`window.__TAURI__` a fortnight earlier. **A test that supplies what production
+is missing cannot find what production is missing.** The guard is now
+`test_work_the_backend_answered_ok_for_survives_being_killed`, which drives the
+real entry point over a pipe and kills the process rather than closing stdin —
+`subprocess.run` cannot express this, because closing stdin ends the loop
+gracefully and the bug needs a kill.
+
+**Rejected: committing in the stdio loop** (`main()`), which is where the brief
+put it. Two reasons. A commit fails for reasons the request did not cause — a
+full disk, a locked file — and out there that is an uncaught exception in a
+process whose entire contract is that it answers instead of dying; inside
+`handle()`'s existing `except` it becomes an ordinary error frame at no extra
+cost. And `handle()` is the boundary a Django view or a queue worker would
+reuse, whereas the loop is bound to the pipe that happens to feed it.
+
+**Rejected: committing inside each api method.** Seventeen methods, seventeen
+chances to forget, and the next method added starts wrong by default. The
+boundary belongs at the one place every request passes through.
+
+**Rejected: `isolation_level=None` (autocommit).** It would also stop the data
+loss, and it would do it by removing the transaction rather than by closing it —
+a failed mapping commit would leave its partial rows behind with nothing to roll
+back to. The half-applied import is the case that matters here.
+
+**Not adopted: the shell sending `shutdown` before `kill()`.** Worth doing for
+tidiness, but it is not this fix and would not have been one. `shutdown` breaks
+the loop without committing, so the graceful path lost exactly as much as the
+kill did; and now that a request commits, a kill loses nothing. There is no Rust
+toolchain on the development machine and CI is refusing to start jobs, so
+writing it today would stack a second unverifiable shell change on top of the
+`withGlobalTauri` fix already waiting for a release build. Deferred to that same
+build, deliberately.
+
+**Found on the way, and fixed.** `tests/test_packaging.py::_talk` ran the entry
+point with no `--db`, which is the real per-user database named in
+`docs/install.md`. Harmless only while nothing committed. It now uses a
+temporary directory.
+
+**Left open, recorded so it is not rediscovered.** `planbrain/offline.py`
+`engage()` monkeypatches `socket.socket` globally and has no inverse, so
+importing `planbrain.backend.__main__` from a test or a future Django process
+engages the offline guard irreversibly for that whole process. That is why the
+new test drives a subprocess instead of calling `handle()` directly, and it is
+the first thing in the way of the Django and worker deployments that are
+supposed to reuse this boundary.
+
+## 2026-09-06 — A second dataset, and it does not confirm the first
+
+**Done.** The benchmark now has a manufacturer as well as a retailer.
+`datasets/prepare_product_demand.py` reduces historical order demand for a
+global manufacturing company — 646 product-and-warehouse series across four
+central warehouses, 123,050 demand rows, 2011-01-08 to 2017-01-09 — into the
+same two CSVs `tools/benchmark.py` already reads. Same engines, same sweep,
+same `simulate.compare` the product's own report uses.
+
+**The retail run reproduced exactly first.** 100 cells against
+`docs/benchmark-run.json`, worst relative drift 0, identical meta. That closes
+the gap `docs/status.md` named as uncheckable in CI — CI cannot download 45 MB,
+so nothing had ever confirmed the engines still *produce* the committed run.
+They do.
+
+**And then the second dataset disagreed.** Read at matched stock, which is the
+only fair comparison:
+
+| | retailer | manufacturer |
+|---|---|---|
+| vs ERP min/max kept current | +1.5 to +3.7 | **−1.4 to +0.6** |
+| vs ERP min/max left stale | +13.4 to +14.2 | −6.7 and +2.9, two points only |
+| vs the spreadsheet | +0.7 to +7.3 | −0.1 to +3.7 |
+| vs naive zero | behind at the lowest stock only | **behind at every matched point** |
+
+On the manufacturer's **lumpy** series — 616 of its 639 scored, and the pattern
+this product is positioned on — it is behind a current ERP min/max at three of
+four matched points and ahead at one, everything inside 1.5 points. **That is a
+tie, and it was reported as a win on the strength of one dataset from the wrong
+industry.**
+
+**What survives.** It beats the spreadsheet on both. On the manufacturer's
+*intermittent* series it is ahead of the ERP at all four matched points by 1.8
+to 6.4 — but that is 23 series, which cannot carry a claim.
+
+**Rejected: summing the four warehouses into one series per product.** It would
+have raised every figure, because aggregation smooths exactly the intermittency
+this product exists to plan. A SKU here is a product *at a warehouse*, which is
+also what a planner holds stock for. The flattering choice was available and was
+not taken.
+
+**Rejected: netting returns into demand.** The source writes them as `(1000)`.
+A return is not demand, and netting it understates what had to be on the shelf
+that morning.
+
+**Stated, not hidden: this file has no prices.** Every unit price is written as
+1, so `inventory_value` is in units rather than currency for this source. The
+fill-rate-against-units comparison never reads a price and is unaffected.
+
+**What this does not license.** The stale-parameter result is *not* refuted —
+only two of its points overlap here, so this is an absence of evidence where the
+retail run had a lot of it. And 646 series against 2,947 is a quarter the size.
+The honest position is that the headline claim now rests on one dataset from an
+industry the product is not sold to, and the one dataset from the right industry
+does not support it. A third source is no longer a nice-to-have.
+
+Published, both datasets side by side, at
+<https://claude.ai/code/artifact/795bfe82-f67f-4f81-b5c8-5489472b9b48>.
+
+## 2026-09-06 — Safety stock was answering the wrong question
+
+**The defect.** `safety_stock_for_service` computes `z(alpha) * sigma *
+sqrt(L + R)`. Two things are wrong with it for the demand this product plans,
+and they are separate:
+
+* **Wrong quantity.** `alpha` is a *cycle service level* — the probability of
+  surviving a cycle without a stockout. `simulate/__init__.py` already said so
+  in its own report line. `docs/benchmark.md` scores **fill rate**, the fraction
+  of demand served. The two coincide by accident.
+* **Wrong shape.** 93% of the retail portfolio and 96% of the manufacturing one
+  is lumpy or intermittent: long runs of zero with occasional large orders. A
+  normal fitted to per-bucket sigma describes neither the zeros nor the orders.
+
+`tests/test_safety_stock.py` had recorded the symptom — "a requested cycle
+service level is not a fill rate, and on this portfolio the two are far apart" —
+and filed it as a property of the data. **It is a property of the estimator.**
+
+On nine orders of 100 in ninety days with a six-day lead time, the formula asks
+for **no stock at a 50% target and serves none of the demand**, then at 99% asks
+for **184 units when 100 is the largest window that can ever occur** — the last
+84 cannot change any outcome. Starved at the bottom, wasteful at the top, which
+is the shape of the frontier problem.
+
+**Done.** `order_up_to_for_fill_rate` inverts the standard fill-rate identity
+
+    P2(S) = 1 - E[(D - S)+] / E[D]
+
+against the *observed* distribution of protection-window demand, by bisection.
+No normal assumption, and it targets the quantity actually being scored.
+`achieved_fill_rate` is the same identity exposed for testing. Silver, Pyke &
+Thomas ch. 7, with the empirical distribution in place of the normal.
+
+**Measured, at matched stock, which is the only fair read** — the sweep
+parameter now means different things to different policies, so the raw table is
+uncomparable:
+
+| on hand (manufacturer) | old forecast | **P2 base** | ERP kept current | spreadsheet |
+|---|---|---|---|---|
+| 8,932 | 0.612 | **0.709** | 0.646 | — |
+| 11,526 | 0.701 | **0.749** | 0.719 | 0.672 |
+| 16,714 | 0.792 | **0.803** | 0.792 | 0.782 |
+| 21,902 | — | **0.836** | 0.826 | 0.832 |
+
+**On the manufacturer this converts the tie into a lead.** The flat fill-rate
+base stock wins 5 of 7 matched points and beats both real incumbents everywhere
+they overlap above ~8,900 units — up to +9.7 points against the product's own
+previous policy and +6.3 against a well-kept ERP.
+
+**And it loses on the retailer**, where the old forecast policy wins 6 of 7
+matched points (0.717 against 0.639 at 59 units). The reading that fits both:
+the retailer has real weekly structure — Sunday is 79% of a normal trading day —
+so a time-varying forecast earns its place there, while the manufacturer's
+intermittent demand has no exploitable pattern and the distribution does the
+whole job.
+
+**So it is added as a policy, not as a replacement.** Shipping it globally would
+trade a win on one dataset for a loss on the other. The selection rule — which
+series get a forecast and which get a flat distributional level — is the next
+piece of work and needs its own evidence; the product already classifies demand
+patterns per series, which is where that rule belongs.
+
+**Kept deliberately: `forecast_fill_rate`, which never wins.** Carrying the
+forecast on top of the fill-rate level is worse than the flat level on both
+datasets. It is the control that shows the forecast term is what misplaces the
+stock, and this repo pins the rows that go against it.
+
+**Rejected: replacing `safety_stock_for_service`.** It is not broken at what it
+does; it was being read as though it targeted fill rate. Deleting it would lose
+the cycle-service rule and hide the comparison that makes the case.
+
+**Also fixed here: the trading calendar was the retailer's, hardcoded.**
+`tools/benchmark.py` assumed every day except Saturday and handed that to a
+manufacturer working Monday to Friday, so Sunday counted as a working day on
+1.15% of its rows — and the code's own comment warned that a wrong period puts
+every weekly pattern out of phase. It is now derived from the data, with
+boundary tests. **Retail reproduced bit-for-bit (25 cells, zero drift) and the
+manufacturing figures did not move at all**, so the bug was real and the fix
+changes nothing. Recorded because the next person will otherwise re-suspect it.
+
+**Committing is necessary and is not sufficient, which only launching it
+showed.** Driving the real pair — build the demo, run a plan, kill the sidecar
+with no `shutdown`, relaunch on the same file — the rows now survive, and the
+relaunched application still answers:
+
+    no dataset loaded; call demo.build for the worked example, or import your
+    own data first
+
+`Session.demo` is process-local and only `demo_build` sets it. Seven methods
+gate on it — `plan_run`, `plan_orders`, `plan_risks`, `override_set`,
+`override_clear`, `override_list`, `plan_export` (`api.py:386, 460, 513, 537,
+557, 579, 617`) — so after a restart the database is full and the application
+is empty. **The planner's work is on disk and unreachable**, which from their
+side is the same screen as having lost it.
+
+The unit tests do not see this: they assert through `read_facts`, which reads
+the file directly, while the product refuses at a guard above that. It is the
+same lesson as `withGlobalTauri` and as the `render_ui` harness — *press the
+button*. A green assertion about a file is not the application working.
+
+This is the master-data port already named as review finding 1: the engines take
+the demo dataset type, and only the generator provides one. Fixing the
+transaction boundary was the right first move and the data is now genuinely
+durable; **restoring it into a new process is a separate, larger change and is
+not done.** Nothing here should be read as "persistence works" until a relaunch
+can plan.
