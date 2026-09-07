@@ -14,7 +14,12 @@ from statistics import NormalDist
 
 import pytest
 
-from planbrain.simulate.policies import safety_stock_for_service
+from planbrain.simulate.policies import (
+    achieved_fill_rate,
+    level_for_exceedance,
+    order_up_to_for_fill_rate,
+    safety_stock_for_service,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -142,3 +147,146 @@ def test_a_higher_service_level_never_lowers_the_fill_rate(demo):
         for level in (0.80, 0.95, 0.99)
     ]
     assert fills == sorted(fills), f"fill rate fell as service level rose: {fills}"
+
+
+# --------------------------------------------------------------------------
+# asking for a fill rate and getting one
+# --------------------------------------------------------------------------
+
+#: Nine orders of 100 in ninety days: the canonical intermittent series, and
+#: 93-96% of both real datasets is this shape.
+INTERMITTENT = [100.0 if i % 10 == 0 else 0.0 for i in range(90)]
+
+
+@pytest.mark.parametrize("target", [0.50, 0.75, 0.90, 0.95, 0.99])
+def test_a_requested_fill_rate_is_actually_delivered(target):
+    """The point of the rule: ask for a fill rate, get that fill rate.
+
+    `safety_stock_for_service` cannot do this and is not being blamed for it --
+    it targets a *cycle service level*, which is a different quantity. What it
+    cannot do is be used as though it targeted fill rate, which is what the
+    benchmark scores.
+    """
+    level = order_up_to_for_fill_rate(INTERMITTENT, lead_time_days=6, fill_rate=target)
+    assert achieved_fill_rate(INTERMITTENT, level, lead_time_days=6) == pytest.approx(
+        target, abs=0.01
+    )
+
+
+def test_the_normal_approximation_misses_on_the_same_series():
+    """Why the rule above had to exist, asserted rather than asserted-about.
+
+    On intermittent demand the normal approximation under-delivers badly at low
+    targets and buys nothing at high ones. At 50% it asks for no stock at all
+    and serves none of the demand; at 99% it holds more than the largest window
+    of demand that has ever occurred, so the last third of that stock cannot
+    change the outcome.
+    """
+    sd = math.sqrt(sum(x * x for x in INTERMITTENT) / len(INTERMITTENT)
+                   - (sum(INTERMITTENT) / len(INTERMITTENT)) ** 2)
+
+    low = safety_stock_for_service(sd, lead_time_days=6, service_level=0.50)
+    assert achieved_fill_rate(INTERMITTENT, low, lead_time_days=6) < 0.01, (
+        "a 50% cycle service level happens to deliver a usable fill rate here, "
+        "which would remove the reason this rule exists"
+    )
+
+    high = safety_stock_for_service(sd, lead_time_days=6, service_level=0.99)
+    assert high > max(INTERMITTENT) * 1.5, (
+        "the normal approximation no longer overshoots the largest possible "
+        "requirement, so the waste this rule avoids is gone"
+    )
+
+
+def test_more_fill_rate_never_asks_for_less_stock():
+    levels = [order_up_to_for_fill_rate(INTERMITTENT, lead_time_days=6, fill_rate=f)
+              for f in (0.5, 0.75, 0.9, 0.99)]
+    assert levels == sorted(levels)
+
+
+def test_a_sku_nobody_ordered_needs_no_stock():
+    """Stock held against a number rather than a customer."""
+    assert order_up_to_for_fill_rate([0.0] * 30, lead_time_days=6, fill_rate=0.95) == 0.0
+
+
+@pytest.mark.parametrize("bad", [0.0, 1.0, -0.1, 1.5])
+def test_a_fill_rate_that_is_not_a_fraction_is_refused(bad):
+    with pytest.raises(ValueError, match="strictly between 0 and 1"):
+        order_up_to_for_fill_rate(INTERMITTENT, lead_time_days=6, fill_rate=bad)
+
+
+# --------------------------------------------------------------------------
+# allocating a stock budget across parts, rather than per part
+# --------------------------------------------------------------------------
+
+#: Two parts with similar average demand and very different shapes: one that
+#: varies mildly every day, one that is quiet then large. Both need enough
+#: distinct protection-window totals for a budget to be split between them --
+#: a two-valued series can only be stocked all or nothing, which cannot show
+#: an allocation argument either way.
+STEADY = [8.0 + (i * 7 % 5) for i in range(240)]
+SPIKY = [0.0] * 240
+for _i in range(0, 240, 9):
+    SPIKY[_i] = 40.0 + (_i * 13 % 60)
+
+
+def test_the_level_falls_as_the_exceedance_target_tightens():
+    levels = [level_for_exceedance(SPIKY, lead_time_days=6, exceedance=e)
+              for e in (0.5, 0.25, 0.1, 0.01)]
+    assert levels == sorted(levels)
+
+
+def test_it_equalises_the_chance_of_running_out_not_the_service_level():
+    """The whole point, and the thing that makes it a portfolio rule.
+
+    At one common exceedance target the two parts get levels whose *probability
+    of being exceeded* matches, which is the condition for the last unit of
+    stock being worth the same wherever it is spent. Equal fill rate does not
+    have that property, so it leaves service on the table.
+    """
+    theta = 0.10
+    for series in (STEADY, SPIKY):
+        level = level_for_exceedance(series, lead_time_days=6, exceedance=theta)
+        window = [sum(series[i:i + 7]) for i in range(len(series) - 6)]
+        over = sum(1 for w in window if w > level) / len(window)
+        assert over <= theta + 1e-9, f"{over} exceeds the target {theta}"
+
+
+def test_it_serves_more_than_equal_fill_rate_for_the_same_stock():
+    """Falsifiable head to head. Same two parts, same total stock, two ways of
+    splitting it -- the allocation rule must serve at least as many units."""
+    def served(levels):
+        total = 0.0
+        for series, level in zip((STEADY, SPIKY), levels):
+            window = [sum(series[i:i + 7]) for i in range(len(series) - 6)]
+            total += sum(min(w, level) for w in window)
+        return total
+
+    equal_fill = [order_up_to_for_fill_rate(s, lead_time_days=6, fill_rate=0.9)
+                  for s in (STEADY, SPIKY)]
+    budget = sum(equal_fill)
+
+    # The exceedance target that spends the same budget.
+    lo, hi = 0.0, 1.0
+    for _ in range(50):
+        mid = (lo + hi) / 2
+        levels = [level_for_exceedance(s, lead_time_days=6, exceedance=mid)
+                  for s in (STEADY, SPIKY)]
+        if sum(levels) > budget:
+            lo = mid
+        else:
+            hi = mid
+    allocated = [level_for_exceedance(s, lead_time_days=6, exceedance=hi)
+                 for s in (STEADY, SPIKY)]
+
+    assert sum(allocated) <= budget + 1e-6, "the comparison must spend no more"
+    assert served(allocated) >= served(equal_fill) - 1e-6, (
+        "equalising the chance of running out served fewer units than equalising "
+        "the service level, for the same stock -- the allocation argument fails"
+    )
+
+
+@pytest.mark.parametrize("bad", [-0.1, 1.5])
+def test_an_exceedance_that_is_not_a_probability_is_refused(bad):
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        level_for_exceedance(SPIKY, lead_time_days=6, exceedance=bad)

@@ -17,6 +17,7 @@ that settles it, and the number a finance manager will actually read.
 from dataclasses import dataclass
 
 from ..forecast import classify, make_forecaster
+from ..forecast.aggregate import aggregated_forecaster
 from statistics import NormalDist
 
 from ..facts.access import read_facts
@@ -24,17 +25,21 @@ from ..forecast.metrics import ScoredMean, scored_mean
 from .core import Outcome, replay
 from .policies import (
     demand_statistics,
+    achieved_fill_rate,
     forecast_order_up_to,
     moving_average_cover,
     naive_zero_order_up_to,
     reorder_point,
+    level_for_exceedance,
+    order_up_to_for_fill_rate,
     safety_stock_for_service,
 )
 
 TABLE = "fact_supply_demand"
 
 POLICIES = ("forecast", "moving_average", "naive_zero", "reorder_point",
-            "reorder_point_stale")
+            "reorder_point_stale", "fill_rate_base", "forecast_fill_rate",
+            "forecast_seasonal", "seasonal_fill_rate", "marginal_allocation")
 
 #: Buckets the spreadsheet baseline averages over. Twelve weeks, because "take
 #: the last three months" is the rule a planner without software actually
@@ -55,7 +60,10 @@ __all__ = [
     "capacity_factor",
     "compare",
     "demand_statistics",
+    "achieved_fill_rate",
     "forecast_order_up_to",
+    "level_for_exceedance",
+    "order_up_to_for_fill_rate",
     "moving_average_cover",
     "naive_zero_order_up_to",
     "reorder_point",
@@ -113,6 +121,21 @@ class PolicyResult:
     #: castings are not the same decision -- and working capital is the term a
     #: planner is actually answerable for.
     inventory_value: InventoryValue = None
+    #: Units served over units demanded across the whole portfolio.
+    #:
+    #: **A different question from `fill_rate`, and never merged with it.**
+    #: `fill_rate` is a mean across parts, so a part with two units of annual
+    #: demand counts as much as one with two million; it answers "how many of my
+    #: part numbers were fine". This answers "how much of my demand did I
+    #: actually serve", which is the one a business is paid on. Both are
+    #: reported because they can disagree, and the disagreement is the
+    #: information -- a policy can look good on one by being good at the parts
+    #: that barely matter.
+    weighted_fill_rate: float = None
+    #: What the portfolio holds, not what an average part holds. The companion
+    #: axis for `weighted_fill_rate`: a fraction of demand served has to be read
+    #: against total stock, or the two halves are on different footings.
+    total_on_hand: float = None
 
 
 def capacity_factor(con, demo, *, scenario_id: int = 0, holdout_days: int = 90) -> list:
@@ -243,12 +266,72 @@ def compare(
         _, forecaster = make_forecaster(profile.pattern, season_length=season_length)
         fitted = forecaster(train, holdout_days)
 
+        # The same sweep value read as a FILL RATE rather than a cycle service
+        # level, inverted against the demand that actually occurred. See
+        # `order_up_to_for_fill_rate`: the normal approximation above targets
+        # the wrong quantity under the wrong distribution for 93-96% of both
+        # real portfolios, and these two policies exist to measure what that
+        # costs rather than to argue about it.
+        window = lead_time + 1
+        p2_level = (
+            order_up_to_for_fill_rate(
+                train, lead_time_days=lead_time, fill_rate=safety_service_level
+            )
+            if safety_service_level is not None
+            else 0.0
+        )
+        mean_window = mean * window
+
         runs = {
             "forecast": forecast_order_up_to(
                 fitted, lead_time_days=lead_time, safety_stock=safety, lot_multiple=lot
             ),
             "naive_zero": naive_zero_order_up_to(
                 lead_time_days=lead_time, safety_stock=safety
+            ),
+            # Stock allocated across the portfolio rather than per part.
+            # Equal *service* per part is not the same as spending the last unit
+            # where it serves most; equal chance of running out is. The sweep
+            # setting is read as the exceedance target's complement, so the
+            # curve it traces is comparable with the others.
+            "marginal_allocation": naive_zero_order_up_to(
+                lead_time_days=lead_time,
+                safety_stock=(
+                    level_for_exceedance(train, lead_time_days=lead_time,
+                                         exceedance=1.0 - safety_service_level)
+                    if safety_service_level is not None else 0.0
+                ),
+            ),
+            # A flat base stock at the fill-rate level: no forecast at all, the
+            # demand distribution doing the whole job.
+            "fill_rate_base": naive_zero_order_up_to(
+                lead_time_days=lead_time, safety_stock=p2_level
+            ),
+            # The forecast, carried on top of the same level. The safety term is
+            # what the level asks for beyond an average window, so when the
+            # forecast is average the target is exactly the fill-rate level and
+            # it flexes from there.
+            # The same order-up-to rule, fed a forecast fitted where the
+            # season is visible. `forecast` above is flat for 100% of the
+            # manufacturing series and 98% of the retail ones, because at daily
+            # grain they classify as lumpy and TSB returns a level. These two
+            # aggregate first, so a yearly cycle is a period of 13 rather than
+            # 365 -- see `planbrain/forecast/aggregate.py`.
+            "forecast_seasonal": forecast_order_up_to(
+                aggregated_forecaster(train, holdout_days),
+                lead_time_days=lead_time, safety_stock=safety, lot_multiple=lot
+            ),
+            # The same seasonal forecast carried on the fill-rate level rather
+            # than the normal-approximation one, so the two improvements can be
+            # read apart as well as together.
+            "seasonal_fill_rate": forecast_order_up_to(
+                aggregated_forecaster(train, holdout_days),
+                lead_time_days=lead_time,
+                safety_stock=max(0.0, p2_level - mean_window), lot_multiple=lot
+            ),
+            "forecast_fill_rate": forecast_order_up_to(
+                fitted, lead_time_days=lead_time,
+                safety_stock=max(0.0, p2_level - mean_window), lot_multiple=lot
             ),
             # The spreadsheet. Given the SAME quantity of safety stock as every
             # other policy, expressed the way a spreadsheet expresses it -- as
@@ -273,6 +356,7 @@ def compare(
                 safety_factor=safety_factor, order_quantity=lot or None,
             ),
         }
+
         for name, policy in runs.items():
             outcomes[name][key] = replay(
                 holdout, policy, initial_on_hand=opening, lead_time_days=lead_time,
@@ -342,8 +426,13 @@ def _summarise_policy(name, runs, patterns, unit_costs=None) -> PolicyResult:
         bucket = by_pattern.setdefault(patterns[key], {"fill": {}, "stock": {}})
         bucket["fill"][key] = outcome.fill_rate
         bucket["stock"][key] = outcome.average_on_hand
+    demanded = sum(o.units_demanded for o in runs.values())
+    served = sum((o.units_served_on_time if o.units_served_on_time is not None
+                  else o.units_served) for o in runs.values())
     return PolicyResult(
         policy=name,
+        weighted_fill_rate=(served / demanded) if demanded > 0 else None,
+        total_on_hand=sum(o.average_on_hand for o in runs.values()),
         fill_rate=scored_mean(fills),
         eventual_fill_rate=scored_mean(eventual),
         average_on_hand=scored_mean(stock),

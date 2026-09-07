@@ -218,3 +218,40 @@ def test_series_with_no_holdout_demand_are_unscored_not_perfect(report):
     for result in report["policies"].values():
         assert result.fill_rate.n_scored <= report["evaluated"]
         assert result.fill_rate.coverage <= 1.0
+
+
+# --------------------------------------------------------------------------
+# two fill rates, never merged
+# --------------------------------------------------------------------------
+
+def test_the_weighted_fill_rate_answers_a_different_question(report):
+    """**A mean across parts is not a fraction of demand served.**
+
+    `fill_rate` weights a part with two units of annual demand exactly as much
+    as one with two million. That is defensible -- a stockout can halt a line
+    whatever the part costs -- and it is not the number a business is paid on.
+    `weighted_fill_rate` is units served over units demanded across the whole
+    portfolio, and the two are reported side by side because they can disagree,
+    and the disagreement is the information.
+    """
+    for result in report["policies"].values():
+        assert result.weighted_fill_rate is not None
+        assert 0.0 <= result.weighted_fill_rate <= 1.0
+
+
+def test_the_two_fill_rates_are_not_the_same_number(report):
+    """If they agreed, one of them would be redundant and the distinction would
+    be ceremony."""
+    gaps = [abs(r.fill_rate.value - r.weighted_fill_rate)
+            for r in report["policies"].values() if r.fill_rate.value is not None]
+    assert max(gaps) > 0.001, (
+        "the demand-weighted and per-part fill rates agree to a thousandth on "
+        "every policy, so this portfolio has no size spread to reveal"
+    )
+
+
+def test_total_on_hand_is_the_portfolio_not_an_average(report):
+    """The weighted fill rate needs a stock figure on the same footing: what the
+    portfolio holds, not what an average part holds."""
+    for result in report["policies"].values():
+        assert result.total_on_hand >= result.average_on_hand.value
