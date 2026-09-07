@@ -25,6 +25,13 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
+[project.scripts]
+# The command a `pip install planbrain` actually gives you. Without this the
+# package installs and offers nothing to run: the backend is a stdio server the
+# desktop shell speaks to, and `python -m planbrain.backend` is not something to
+# put in front of a planner.
+planbrain = "planbrain.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest",
