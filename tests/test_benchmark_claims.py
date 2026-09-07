@@ -222,3 +222,59 @@ def test_every_pattern_the_document_names_carries_its_series_count():
     text = (ROOT / "docs" / "benchmark.md").read_text(encoding="utf-8")
     for pattern, count in PATTERN_SERIES.items():
         assert f"{count:,} scored series" in text, pattern
+
+
+# --------------------------------------------------------------------------
+# the trading calendar is read off the data, not assumed
+# --------------------------------------------------------------------------
+
+def _series(counts):
+    """A demand book with `counts[weekday]` events on that weekday."""
+    from datetime import date, timedelta
+    start = date(2024, 1, 1)          # a Monday, so weekday 0 is Monday
+    days = {}
+    for weekday, n in counts.items():
+        for i in range(n):
+            days[start + timedelta(days=weekday + 7 * i)] = 1.0
+    return {"SKU": days}
+
+
+def test_a_weekday_below_the_cutoff_is_not_a_trading_day():
+    """The boundary, not a count of days.
+
+    The calendar was hardcoded to the UK retailer's week -- every day except
+    Saturday -- and handed to a manufacturer that works Monday to Friday it
+    called Sunday a trading day on 1.15% of the rows. The seasonal period is
+    derived from this, so a wrong period puts every weekly pattern out of phase.
+    """
+    from tools.benchmark import TRADING_DAY_SHARE, trading_days
+
+    busy = 100
+    just_under = int(busy * TRADING_DAY_SHARE) - 1
+    just_over = int(busy * TRADING_DAY_SHARE) + 1
+
+    counts = {0: busy, 1: busy, 2: busy, 3: busy, 4: busy}
+    assert 6 not in trading_days(_series({**counts, 6: just_under}))
+    assert 6 in trading_days(_series({**counts, 6: just_over}))
+
+
+def test_a_five_day_week_and_a_six_day_week_are_told_apart():
+    """The two real datasets, in miniature. Both must survive the same rule."""
+    from tools.benchmark import trading_days
+
+    weekdays = {0: 100, 1: 100, 2: 100, 3: 100, 4: 100}
+    # The manufacturer: a trickle of Sunday bookings that are not a working day.
+    assert trading_days(_series({**weekdays, 5: 1, 6: 6})) == frozenset({0, 1, 2, 3, 4})
+    # The retailer: Sunday is a real trading day, Saturday is not.
+    assert trading_days(_series({**weekdays, 5: 1, 6: 79})) == frozenset({0, 1, 2, 3, 4, 6})
+
+
+def test_a_calendar_cannot_be_derived_from_nothing():
+    """An empty book must say so rather than return an empty week, which would
+    read downstream as a business that never trades."""
+    import pytest as _pytest
+
+    from tools.benchmark import trading_days
+
+    with _pytest.raises(ValueError, match="no demand rows"):
+        trading_days({})
