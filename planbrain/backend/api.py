@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..demo import build_demo, populate
+from ..facts.master import load_master, store_master
 from ..importer import ErrorLog, load_table, validate_cross_references
 from ..importer.fields import SCHEMAS
 
@@ -76,7 +77,15 @@ def session(path: str = ":memory:") -> Session:
     if not _has_schema(con):
         con.executescript(SCHEMA_SQL.read_text(encoding="utf-8"))
         con.commit()
-    return Session(con=con)
+    # The dataset the last session left behind, if any.
+    #
+    # **This is what made the application usable twice.** Facts were persisted
+    # from the first release and the part master was not, so reopening the file
+    # found the demand rows and no lead times -- and every method that needs a
+    # dataset refused, while the data sat there. `load_master` returns None on a
+    # fresh install rather than an empty dataset, so `state.demo is None` still
+    # means exactly what it meant.
+    return Session(con=con, demo=load_master(con))
 
 
 def _has_schema(con) -> bool:
@@ -104,6 +113,10 @@ def ping(state) -> dict:
 def demo_build(state, seed: int = 7) -> dict:
     state.demo = build_demo(seed=seed)
     counts = populate(state.con, state.demo)
+    # Written beside the facts, in the same request and so the same transaction.
+    # Persisting one without the other is what produced a file with demand in it
+    # and nothing that could plan against it.
+    store_master(state.con, state.demo)
     return {
         "parts": len(state.demo.parts),
         "bom_edges": len(state.demo.bom),

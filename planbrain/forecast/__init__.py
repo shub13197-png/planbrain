@@ -11,7 +11,7 @@ and the aggregation is visible at the point of use rather than baked into
 storage.
 """
 
-from ..facts.access import Fact, read_facts, write_facts
+from ..facts.access import distinct_keys, Fact, read_facts, write_facts
 from ..facts.scenario import growth_of
 from .backtest import backtest_series, rolling_origin_windows, seasonal_naive
 from .classify import classify, is_intermittent
@@ -87,7 +87,14 @@ def run(con, demo, *, scenario_id: int = 0, keys=None, season_length: int = None
     naive baseline is a different result, and no row count would say so.
     """
     season_length = _season_length(demo, season_length)
-    keys = list(keys) if keys is not None else demand_keys(demo)
+    # From the database when the dataset in hand carries no facts, which is what
+    # a session that reopened an existing file looks like.
+    if keys is not None:
+        keys = list(keys)
+    elif demo.facts.get((TABLE, SOURCE_MEASURE)):
+        keys = demand_keys(demo)
+    else:
+        keys = distinct_keys(con, TABLE, scenario_id=scenario_id, measure=SOURCE_MEASURE)
     history = read_history(
         con, scenario_id=scenario_id, keys=keys,
         history_start=demo.history_start, history_end=demo.history_end,

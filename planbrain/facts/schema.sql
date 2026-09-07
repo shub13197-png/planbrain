@@ -156,6 +156,85 @@ CREATE TABLE fact_fleet (
     PRIMARY KEY (truck_id, bucket_date, measure, scenario_id)
 );
 
+-- --------------------------------------------------------------------------
+-- Master data: what the facts are ABOUT.
+--
+-- **These tables did not exist, and their absence was the product's largest
+-- open defect.** Facts were persisted from the first release; lead times, lot
+-- sizes, the BOM, locations, resources and the working calendar were not. They
+-- lived on a per-process object set by exactly one method, so a planner could
+-- import a year of history, close the window, reopen it, and be told there was
+-- no dataset loaded while their demand rows sat in the file.
+--
+-- Deliberately NOT in the fact tables. A fact is a quantity at a
+-- (sku, loc, bucket, measure, scenario); a lead time is a property of a part
+-- and has no bucket. Putting it in a fact table would have forced a date on
+-- something that does not have one.
+-- --------------------------------------------------------------------------
+
+CREATE TABLE location (
+    loc_id  INTEGER PRIMARY KEY,
+    name    TEXT NOT NULL,
+    kind    TEXT NOT NULL
+);
+
+CREATE TABLE part (
+    sku_id         INTEGER PRIMARY KEY,
+    name           TEXT    NOT NULL,
+    level          TEXT    NOT NULL,
+    lead_time_days INTEGER NOT NULL,
+    safety_stock   NUMERIC NOT NULL,
+    lot_policy     TEXT    NOT NULL,
+    lot_qty        NUMERIC NOT NULL,
+    unit_cost      NUMERIC NOT NULL
+);
+
+CREATE TABLE bom (
+    parent_sku_id INTEGER NOT NULL REFERENCES part (sku_id),
+    child_sku_id  INTEGER NOT NULL REFERENCES part (sku_id),
+    qty_per       NUMERIC NOT NULL,
+    PRIMARY KEY (parent_sku_id, child_sku_id)
+);
+
+CREATE TABLE resource (
+    resource_id INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL,
+    kind        TEXT NOT NULL
+);
+
+CREATE TABLE routing (
+    sku_id         INTEGER NOT NULL REFERENCES part (sku_id),
+    resource_id    INTEGER NOT NULL REFERENCES resource (resource_id),
+    hours_per_unit NUMERIC NOT NULL,
+    setup_hours    NUMERIC NOT NULL,
+    PRIMARY KEY (sku_id, resource_id)
+);
+
+CREATE TABLE truck (
+    truck_id    INTEGER PRIMARY KEY,
+    plate       TEXT    NOT NULL,
+    capacity_kg NUMERIC NOT NULL,
+    available   INTEGER NOT NULL
+);
+
+CREATE TABLE stock_on_hand (
+    sku_id INTEGER NOT NULL REFERENCES part (sku_id),
+    loc_id INTEGER NOT NULL REFERENCES location (loc_id),
+    qty    NUMERIC NOT NULL,
+    PRIMARY KEY (sku_id, loc_id)
+);
+
+-- One row, or none. The dates the plan runs between and the week the business
+-- works, which every seasonal period is derived from.
+CREATE TABLE dataset (
+    only_row         INTEGER PRIMARY KEY CHECK (only_row = 1),
+    history_start    TEXT NOT NULL,
+    history_end      TEXT NOT NULL,
+    horizon_start    TEXT NOT NULL,
+    horizon_end      TEXT NOT NULL,
+    working_weekdays TEXT NOT NULL
+);
+
 -- The planning grid reads one measure across many entities for a date window;
 -- the primary keys are entity-leading and cannot serve that scan.
 CREATE INDEX fact_supply_demand_by_bucket
