@@ -28,7 +28,7 @@ example loaded, plan run, one quantity overridden by hand. Regenerate it with
 | **Risks** | Two lists, never one total: orders already overdue — the signal that actually fires, **212 overdue orders across 159 items** on the demo — and buckets where the projected balance goes negative. |
 | Desktop | Tauri shell, PyInstaller backend, stdio IPC, offline guard engaged in-process. |
 | **Overrides** | The textbook firm planned order: fix a quantity on the day material is needed, with a name and a reason. No run resizes or reschedules it, and a shortfall shows as a shortage rather than being topped back up. |
-| Persistence | One SQLite file per user, at the path `docs/install.md` documents. A request is a transaction, so what the backend answered `ok` for is on disk — **but a relaunch cannot yet reach it**, see open item 1. |
+| Persistence | One SQLite file per user, at the path `docs/install.md` documents. A request is a transaction, and the part master is stored beside the facts, so **closing the window and reopening it returns you to your data** — verified through the packaged binary, not only in a test. |
 | Packaging | Two Windows installers — the standard one embeds the WebView2 bootstrapper (~150 MB, inside budget), the `-offline` variant embeds the runtime (~330 MB, no network at install). |
 
 ## Where it stands against the alternatives
@@ -52,22 +52,11 @@ any fill rate with enough stock, so the comparison is a curve.
 The `ci` run at 09:07 on 6 September passed; everything from 09:28 is refused
 before a step runs — which looks exactly like four platforms failing at once and
 is not that. **Nothing merges to a verified state until this is cleared**, and
-item 2 below depends on it.
+item 1 below depends on it.
 
 ## Open, in the order it matters
 
-1. **A relaunch cannot reach the work it just saved.** Writes are now durable —
-   a request is a transaction, committed in `handle()` — so killing the sidecar
-   no longer rolls back an import or a plan. But `Session.demo` is
-   process-local and only `demo.build` sets it, and seven methods gate on it,
-   so the second launch answers *no dataset loaded; ... import your own data
-   first* against a database that already holds everything. **On disk and
-   unreachable is the same screen as lost.** Found by driving the real pair and
-   relaunching, not by a test — the suite asserts through `read_facts`, which
-   reads under the guard that refuses. This is the master-data port, review
-   finding 1; `docs/decisions.md`, *A request is the transaction boundary*.
-
-2. **The interface has never worked in a shipped build, and the fix is not yet
+1. **The interface has never worked in a shipped build, and the fix is not yet
    verified.** `withGlobalTauri` was absent from `tauri.conf.json`, so
    `window.__TAURI__` did not exist and the frontend threw on its first line —
    **every button in the window dead, on every launch, from the first one.**
@@ -79,15 +68,15 @@ item 2 below depends on it.
    fact**; retracted in `docs/decisions.md`. The race it described is real, is
    fixed, and was not what anyone was looking at.
 
-3. **Three Windows builds were lost to shell details**, each costing a full
+2. **Three Windows builds were lost to shell details**, each costing a full
    four-platform run: a `"//"` key Tauri's strict config schema rejects,
    PowerShell stripping the quotes out of an inline `--config` JSON, and word
    splitting on the space in `Planning Brain_0.1.0_…`. All three are fixed and
    the last was verified locally against files with spaces. The two-installer
    path has therefore **never completed a green run** — that is what the next
-   release build settles, along with item 2.
+   release build settles, along with item 1.
 
-4. **The Linux AppImage fails the size gate at 161.5 MB against 150**, and is
+3. **The Linux AppImage fails the size gate at 161.5 MB against 150**, and is
    left failing on purpose. There is no bloat — the sidecar is accounted for to
    the megabyte and every part of it is required by `statsforecast`. The budget
    simply is not achievable on Linux with this dependency set. Trimming scipy
@@ -95,7 +84,7 @@ item 2 below depends on it.
    from the measurement are the options; the third is probably right and is
    still a decision. `docs/packaging.md`.
 
-5. **The second dataset does not confirm the first, and it is the one from the
+4. **The second dataset does not confirm the first, and it is the one from the
    right industry.** A manufacturer's order book now runs through the same
    benchmark (646 product-warehouse series, 2011-2017,
    `datasets/prepare_product_demand.py`). Read at matched stock, the margin over
@@ -121,9 +110,31 @@ item 2 below depends on it.
    a policy rather than a replacement and the per-series selection rule is the
    open work. `docs/decisions.md`, *Safety stock was answering the wrong
    question*.
-6. **Single echelon.** The plan answers *what must the plant make*, not *what
+5. **Single echelon.** The plan answers *what must the plant make*, not *what
    must each depot hold*. DRP is deferred, and it is the largest gap in the
    README's list.
+
+## Running it without a Rust toolchain
+
+```bash
+pip install -e .
+planbrain demo        # build the worked example into your own database
+planbrain plan        # run it
+planbrain orders      # the list to act on
+planbrain where       # which file your data is in
+```
+
+`planbrain.cli` exists because `pip install` previously produced a library and
+no way to plan with it: the backend is a stdio server for the desktop shell, and
+everything else lived in `tools/`, outside the shipped package. It is not a
+second interface to maintain -- the window is still where a planner works -- it
+is what makes the product runnable on a machine with Python and no Rust.
+
+The standalone backend also builds and runs here:
+`python -m PyInstaller packaging/backend.spec` produces
+`build/dist/planbrain-backend/` at 161 MB against a 400 MB budget, reports
+`"offline": true` in its handshake, and answers `plan.run` on a database written
+by a previous process.
 
 ## How to see it without a Rust toolchain
 

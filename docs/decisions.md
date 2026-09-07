@@ -2311,6 +2311,68 @@ does not support it. A third source is no longer a nice-to-have.
 Published, both datasets side by side, at
 <https://claude.ai/code/artifact/795bfe82-f67f-4f81-b5c8-5489472b9b48>.
 
+## 2026-09-07 — The part master gets somewhere to live
+
+**Decided.** Eight tables -- `location`, `part`, `bom`, `resource`, `routing`,
+`truck`, `stock_on_hand` and a single-row `dataset` -- plus
+`planbrain/facts/master.py` to write and read them. `session()` restores on open;
+`demo_build` stores in the same transaction as the facts.
+
+**The defect.** The database had six tables and none of them held a part.
+Facts and overrides were persisted from the first release; lead times, lot
+sizes, the BOM, locations, resources and the working calendar were not. They
+lived on `Session.demo`, a per-process object set by exactly one method. So a
+planner could import a year of history, close the window, reopen it, and be
+told *no dataset loaded* while their demand rows sat in the file. **On disk and
+unreachable is the same screen as lost**, and it made an installer pointless:
+the application could be used exactly once per launch.
+
+**Rejected: storing master data in the fact tables.** A fact is a quantity at a
+`(sku, loc, bucket, measure, scenario)`. A lead time is a property of a part and
+has no bucket. Putting it there would have forced a date onto something that
+does not have one, and the sparse rule would then have made an absent lead time
+indistinguishable from a lead time of zero.
+
+**Rejected: loading the facts back into `demo.facts` on open.** It would have
+made `demand_keys` work unchanged, and it would also load 460,000 rows to answer
+"is there a dataset in this file", making the application slower to open than to
+plan with. `facts.access.distinct_keys` reads the keys from the store instead --
+sparse storage makes that exact, because a key with no rows is precisely the
+series that should not be forecast.
+
+**Rejected: returning an empty dataset when the file is new.** `load_master`
+returns None. An empty `DemoDataset` would have been planned against and
+reported on as a real portfolio that happened to need nothing, and
+`state.demo is None` would have stopped meaning what every guard reads it to
+mean.
+
+**Found while wiring it.** `BomEdge.qty_per` was written and not read back. The
+first version of the writer used `getattr(e, "qty_per", 1.0)`; a default there
+would silently change every requirement in the explosion if the field were ever
+renamed, which is the failure `tests/test_no_silent_defaults.py` exists for. It
+reads `e.qty_per` directly now.
+
+**Verified by launching, not by asserting.** A new process opens a file written
+by a previous one, restores 200 parts, fits 222 demand series and produces 1,769
+planned releases -- and the same journey runs through the PyInstaller binary,
+which reports `"offline": true` in its handshake and comes in at 161 MB against
+a 400 MB budget.
+
+## 2026-09-07 — `pip install` had nothing to run
+
+**Decided.** `planbrain.cli`, wired as a console script in `pyproject.toml`.
+
+The package installed and offered no command. `planbrain.backend` is a JSON-RPC
+server speaking stdio to the desktop shell -- right for the shell, useless to a
+person -- and everything else lived in `tools/`, which
+`[tool.setuptools.packages.find]` excludes from the distribution.
+
+**Rejected: making this a second full interface.** It loads or builds data, runs
+the plan, prints the order list, and says which file the data is in. The window
+is where a planner works; this is what makes the product runnable on a machine
+with Python and no Rust toolchain, which is every machine this project can
+currently build for.
+
 ## 2026-09-06 — Safety stock was answering the wrong question
 
 **The defect.** `safety_stock_for_service` computes `z(alpha) * sigma *
