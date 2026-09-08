@@ -22,8 +22,9 @@ arrives after the lead time, so today's decision has to cover demand until the
 *next* order could possibly arrive.
 """
 
+import bisect
 import math
-from statistics import NormalDist
+from statistics import NormalDist, fmean
 
 
 def _cover(forecast: list, start: int, length: int) -> float:
@@ -170,6 +171,202 @@ def demand_statistics(history: list):
     mean = sum(history) / len(history)
     variance = sum((v - mean) ** 2 for v in history) / len(history)
     return mean, math.sqrt(variance)
+
+
+def _protection_window_demand(history, window: int) -> list:
+    """Demand summed over each rolling protection window in the history."""
+    if window <= 0:
+        raise ValueError(f"protection window must be positive, got {window}")
+    history = [float(x) for x in history]
+    if len(history) < window:
+        return [float(sum(history))] if history else []
+    return [sum(history[i:i + window]) for i in range(len(history) - window + 1)]
+
+
+def achieved_fill_rate(history, level: float, *, lead_time_days: int,
+                       review_every: int = 1) -> float:
+    """The fraction of demand a base stock of ``level`` would have served.
+
+    The standard fill-rate (P2) identity for a base-stock policy,
+
+        P2(S) = 1 - E[(D - S)+] / E[D]
+
+    with D the demand over one protection window. Evaluated against the demand
+    that actually occurred rather than a fitted distribution, so it inherits no
+    assumption about the shape of D.
+    """
+    sums = _protection_window_demand(history, lead_time_days + review_every)
+    if not sums:
+        return 1.0
+    mean_demand = fmean(sums)
+    if mean_demand <= 0:
+        return 1.0
+    return 1.0 - fmean([max(0.0, d - level) for d in sums]) / mean_demand
+
+
+def level_by_simulation(evaluate, *, target: float, hi: float, steps: int = 18) -> float:
+    """The smallest base stock whose *simulated* service reaches ``target``.
+
+    ``evaluate(level) -> fill_rate`` replays the policy at that level and
+    reports what it achieved, or None if the window held no demand.
+
+    **Why simulate rather than derive.** Every other rule in this module fits a
+    distribution to the whole training window and inverts it. That is exact for
+    a stationary series and wrong for a drifting one: a manufacturer with six
+    years of history gets stocked for regimes that ended -- the level implied by
+    its recent year is 13% lower at the median -- and a twelve-week moving
+    average in a spreadsheet beats this product on share of demand served for
+    precisely that reason. Handing the caller a window and asking what actually
+    happened in it sidesteps the fitting question rather than answering it
+    better.
+
+    Service is non-decreasing in the base stock of an order-up-to policy, so a
+    bisection converges. Eighteen halvings put the answer inside 0.0004% of the
+    range, which is far below the granularity any of this is acted on at.
+
+    Returns 0 when the window held no demand -- a part nobody ordered needs no
+    stock, and reading an empty window as failure would stock it to the ceiling.
+    Returns ``hi`` when nothing in range reaches the target, which is the honest
+    answer: the most stock the caller allowed, rather than a number that looks
+    like a solution.
+
+    Approach: simulation-based parameter search, as used for (s, Q) and (R, S)
+    policies in ikatsov/tensor-house (Apache-2.0). Implemented rather than
+    imported -- the library that covers this ground for intermittent demand,
+    Valdecy/pyInterDemand, is GPL-3.0 and the licence gate in CLAUDE.md excludes
+    it.
+    """
+    if not 0.0 < target < 1.0:
+        raise ValueError(
+            f"target service is a fraction strictly between 0 and 1, got {target!r}"
+        )
+    if hi <= 0:
+        return 0.0
+    if evaluate(hi) is None:
+        return 0.0
+    if evaluate(hi) < target:
+        return float(hi)
+
+    lo, best = 0.0, float(hi)
+    for _ in range(steps):
+        mid = (lo + hi) / 2
+        got = evaluate(mid)
+        if got is not None and got >= target:
+            best, hi = mid, mid
+        else:
+            lo = mid
+    return best
+
+
+def level_for_exceedance(history, *, lead_time_days: int, review_every: int = 1,
+                         exceedance: float) -> float:
+    """The smallest base stock a part's demand exceeds no more than ``exceedance``.
+
+    **This is a portfolio rule wearing a per-part interface.** Its neighbour
+    `order_up_to_for_fill_rate` gives every part the same *service*, which is
+    intuitive and is not what maximises service for a given quantity of stock.
+
+    For an order-up-to policy the expected units served is
+    ``E[D] - E[(D - S)+]``, so the *marginal* units bought by the next unit of
+    stock at level ``S`` is exactly ``P(D > S)``. Stock is therefore being spent
+    well only when that probability is the same everywhere: if part A's demand
+    exceeds its level more often than part B's, moving a unit from B to A serves
+    more, and the total was not optimal. Equalising the chance of running out --
+    not the service level -- is the condition for the last unit being worth the
+    same wherever it sits, and sweeping ``exceedance`` traces the frontier of
+    that allocation.
+
+    Evaluated against the observed distribution of protection-window demand, so
+    it inherits no assumption about the shape of D. Returns 0 for a part with no
+    demand: stock held against a number rather than a customer.
+
+    Algorithm: marginal (equal fractile) allocation of a stock budget. The
+    optimality of equal exceedance for a separable concave objective is the
+    standard newsvendor-with-a-budget result -- Silver, Pyke & Thomas,
+    *Inventory and Production Management in Supply Chains*, 3rd ed., ch. 11.
+    """
+    if not 0.0 <= exceedance <= 1.0:
+        raise ValueError(
+            f"exceedance is a probability between 0 and 1, got {exceedance!r}"
+        )
+    sums = _protection_window_demand(history, lead_time_days + review_every)
+    if not sums or max(sums) <= 0:
+        return 0.0
+    if exceedance <= 0:
+        return max(sums)
+
+    # The smallest observed level leaving no more than `exceedance` of the
+    # windows above it. Read off the data rather than a fitted curve, so the
+    # tail is the one that actually happened.
+    ordered = sorted(sums)
+    n = len(ordered)
+    allowed = exceedance * n
+    # `bisect_right` gives the count at or below a value, so n minus it is the
+    # count strictly above -- the quantity being held under `allowed`.
+    index = max(0, min(n - 1, bisect.bisect_left(ordered, ordered[0])))
+    lo, hi = 0, n - 1
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if n - bisect.bisect_right(ordered, ordered[mid]) <= allowed:
+            hi = mid
+        else:
+            lo = mid + 1
+    return float(ordered[lo])
+
+
+def order_up_to_for_fill_rate(history, *, lead_time_days: int, review_every: int = 1,
+                              fill_rate: float) -> float:
+    """The smallest base stock that serves ``fill_rate`` of demand.
+
+    **Fill rate, not cycle service, and no normal assumption.** Its neighbour
+    `safety_stock_for_service` computes ``z(alpha) * sigma * sqrt(L + R)``,
+    which targets a *cycle service level* -- the probability of surviving a
+    cycle without a stockout -- under a normal demand distribution. Both halves
+    of that are wrong for the demand this product plans:
+
+    * **The target is the wrong quantity.** `docs/benchmark.md` scores fill
+      rate, the fraction of demand served. Cycle service and fill rate coincide
+      only by accident, and `tests/test_safety_stock.py` records how far apart
+      they are on real data.
+    * **The distribution is the wrong shape.** Ninety-three per cent of the
+      retail portfolio and ninety-six per cent of the manufacturing one is
+      lumpy or intermittent: long runs of zero with occasional large orders. A
+      normal fitted to per-bucket demand describes neither the zeros nor the
+      orders. On nine orders of 100 in ninety days it asks for *no stock* at a
+      50% target and serves none of the demand, then at 99% asks for 184 units
+      when 100 is the largest window that can ever occur -- the last 84 cannot
+      change any outcome.
+
+    This inverts `achieved_fill_rate` instead. P2 is non-decreasing in the base
+    stock, so a bisection on [0, largest observed window] converges; sixty
+    halvings put the answer well inside a unit for any realistic quantity.
+
+    Algorithm: fill-rate (P2) inversion against the empirical distribution of
+    lead-time demand. Standard textbook treatment -- Silver, Pyke & Thomas,
+    *Inventory and Production Management in Supply Chains*, 3rd ed., ch. 7 --
+    with the empirical distribution in place of the normal, which is the usual
+    recommendation for intermittent demand.
+    """
+    if not 0.0 < fill_rate < 1.0:
+        raise ValueError(
+            f"fill rate is a fraction strictly between 0 and 1, got {fill_rate!r}. "
+            f"1.0 would demand cover for the largest order ever seen"
+        )
+    sums = _protection_window_demand(history, lead_time_days + review_every)
+    if not sums or max(sums) <= 0:
+        # A SKU nobody ordered needs no stock. Inventing some would be stock
+        # held against a number rather than against a customer.
+        return 0.0
+
+    lo, hi = 0.0, max(sums)
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        if achieved_fill_rate(history, mid, lead_time_days=lead_time_days,
+                              review_every=review_every) >= fill_rate:
+            hi = mid
+        else:
+            lo = mid
+    return hi
 
 
 def safety_stock_for_service(demand_sd: float, *, lead_time_days: int,

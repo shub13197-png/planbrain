@@ -95,6 +95,45 @@ MIN_DEMAND_EVENTS = 12
 HOLDOUT_DAYS = 90
 
 
+#: A weekday counts as trading if it carries at least this share of a normal
+#: working day, measured as the median of the five busiest days. The two real
+#: datasets sit nowhere near it -- the retailer's Sunday is 79% of a normal day
+#: and the manufacturer's is 6% -- so the cutoff is a wide gap, not a knife
+#: edge, and the same answer comes back anywhere between 20% and 33%.
+TRADING_DAY_SHARE = 0.25
+
+
+def trading_days(series: dict) -> frozenset:
+    """Which weekdays this business actually trades on, read off its own data.
+
+    **This was hardcoded to "every day except Saturday", which is the UK
+    retailer's week.** The comment even said the calendar should come from the
+    data, and warned why: the seasonal period is derived from it, so a wrong
+    period puts every weekly pattern out of phase. Handed a manufacturer that
+    works Monday to Friday, the hardcoded version called Sunday a trading day on
+    the strength of 1.15% of its rows, and every weekly seasonality was fitted
+    against a six-day week that does not exist.
+
+    Counting demand *events* rather than units on purpose: one enormous order
+    booked on a Sunday should not turn Sunday into a working day.
+    """
+    from collections import Counter
+    from statistics import median
+
+    events = Counter()
+    for days in series.values():
+        for day in days:
+            events[day.weekday()] += 1
+    if not events:
+        raise ValueError("no demand rows, so no calendar can be derived")
+
+    busiest = median(sorted(events.values(), reverse=True)[:5])
+    trading = frozenset(d for d in ALL_WEEKDAYS if events[d] >= TRADING_DAY_SHARE * busiest)
+    if not trading:
+        raise ValueError("no weekday clears the trading-day cutoff")
+    return trading
+
+
 def load(data_dir: Path, *, limit: int = None, seed: int = 7):
     """Read the reduced CSVs into a dataset the planning engines already accept.
 
@@ -162,12 +201,8 @@ def load(data_dir: Path, *, limit: int = None, seed: int = 7):
         history_start=history_start, history_end=history_end,
         horizon_start=history_end + timedelta(days=1),
         horizon_end=history_end + timedelta(days=90),
-        # This retailer barely trades on Saturdays -- 283 stock-code-days
-        # against roughly 90,000 on every other weekday, Sunday included.
-        # Taking the calendar from the data rather than assuming a six-day week
-        # matters: the seasonal period is derived from it, and a wrong period
-        # puts every weekly pattern out of phase.
-        calendar=WorkingCalendar(frozenset(ALL_WEEKDAYS - {SATURDAY})),
+        # Read off the data, not assumed. See `trading_days`.
+        calendar=WorkingCalendar(trading_days(series)),
         facts={(TABLE, MEASURE): facts},
     )
     return dataset, {
@@ -198,6 +233,11 @@ def run(dataset, *, holdout_days=HOLDOUT_DAYS, sweep=SERVICE_SWEEP) -> list:
                 "policy": name,
                 "fill_rate": result.fill_rate.value,
                 "average_on_hand": result.average_on_hand.value,
+                # The portfolio pair, beside the per-part pair. See
+                # `PolicyResult.weighted_fill_rate`: they answer different
+                # questions and are never merged.
+                "weighted_fill_rate": result.weighted_fill_rate,
+                "total_on_hand": result.total_on_hand,
                 "units_short": result.units_short,
                 "series": result.fill_rate.n_scored,
                 "unscored": result.fill_rate.n_unscored,

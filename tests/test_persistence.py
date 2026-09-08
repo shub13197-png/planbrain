@@ -22,13 +22,15 @@ The tests here are the two halves of it: the file is real and survives a
 restart, and the path is the path the guide names.
 """
 
-import sqlite3
+import json
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
 from planbrain.backend import api
+from planbrain.demo import build_demo
 from planbrain.facts.access import read_facts
 from planbrain.forecast import demand_keys
 
@@ -46,8 +48,11 @@ def test_a_second_session_reads_what_the_first_one_wrote(tmp_path):
     path = tmp_path / "planning.db"
 
     first = api.session(str(path))
-    api.demo_build(first, seed=7)
-    first.con.commit()
+    # A direct api call, where the caller owns the transaction. The
+    # application's own boundary is one request, and it is asserted against the
+    # real process in the next test rather than here.
+    with first.con:
+        api.demo_build(first, seed=7)
     demo = first.demo
     first.con.close()
 
@@ -98,6 +103,87 @@ def test_an_in_memory_session_still_gets_a_schema():
     assert state.con.execute(
         "SELECT count(*) FROM scenario"
     ).fetchone()[0] == 1
+
+
+# --------------------------------------------------------------------------
+# it survives the window closing, which is not a graceful shutdown
+# --------------------------------------------------------------------------
+
+def _drive(path, requests):
+    """Speak the real protocol to the real entry point, then kill it.
+
+    `subprocess.run` cannot express this: it closes stdin, the loop ends of its
+    own accord, and the process exits normally. The failure only appears when
+    the process is *killed* mid-session, which is what the shell does on
+    `WindowEvent::Destroyed` -- so the pipe stays open and the process dies
+    under it.
+
+    Returns the handshake and one reply per request, with progress lines
+    skipped: they carry the same id and are distinguished by `progress`, so a
+    reader that ignores them still sees exactly one response per request.
+    """
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "planbrain.backend", "--db", str(path)],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, cwd=ROOT,
+    )
+    try:
+        handshake = json.loads(proc.stdout.readline())
+        replies = []
+        for request in requests:
+            proc.stdin.write(json.dumps(request) + "\n")
+            proc.stdin.flush()
+            while True:
+                line = proc.stdout.readline()
+                assert line, "the backend died without answering"
+                reply = json.loads(line)
+                if not reply.get("progress"):
+                    break
+            replies.append(reply)
+        return handshake, replies
+    finally:
+        # No `shutdown` request, deliberately. This is the window closing.
+        proc.kill()
+        proc.wait(timeout=30)
+
+
+def test_work_the_backend_answered_ok_for_survives_being_killed(tmp_path):
+    """`ok: true` has to mean the write reached the disk.
+
+    The shell kills the sidecar on `WindowEvent::Destroyed` without sending
+    `shutdown`, so nothing gets a chance to commit on the way out. Everything
+    the backend has already answered `ok` for must survive that.
+
+    Why it did not, and what was rejected instead, is in `docs/decisions.md`
+    under *A request is the transaction boundary*.
+    """
+    path = tmp_path / "planning.db"
+    handshake, replies = _drive(
+        path, [{"id": 1, "method": "demo.build", "params": {"seed": 7}}]
+    )
+
+    assert handshake["ready"] is True
+    assert replies[0]["ok"] is True, "the demo build itself failed"
+
+    assert path.exists(), "no database file was created"
+
+    # Through the accessor, like every other read in the repo. The keys and the
+    # bucket range come from a second, database-free build on the same seed:
+    # the generator is deterministic, so these are the keys the killed process
+    # wrote under, and asking for them costs a third of a second rather than a
+    # raw scan of a fact table.
+    expected = build_demo(seed=7)
+    reopened = api.session(str(path))
+    facts = read_facts(
+        reopened.con, "fact_supply_demand", scenario_id=0, measure="demand_actual",
+        start=expected.history_start, end=expected.history_end,
+        keys=demand_keys(expected)[:5],
+    )
+    reopened.con.close()
+
+    assert sum(1 for f in facts if f.qty) > 0, (
+        "the backend answered ok for demo.build and the file has no demand in "
+        "it: the transaction was never committed, so the kill rolled it back"
+    )
 
 
 # --------------------------------------------------------------------------

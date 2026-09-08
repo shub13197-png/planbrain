@@ -17,7 +17,7 @@
 
 -- Scenarios are FLAT PEERS. Every scenario physically contains all of its rows;
 -- nothing is inherited and no read ever walks source_scenario_id.
-CREATE TABLE scenario (
+CREATE TABLE IF NOT EXISTS scenario (
     scenario_id         INTEGER PRIMARY KEY,
     name                TEXT NOT NULL UNIQUE,
     created_at          TEXT NOT NULL,
@@ -46,15 +46,15 @@ CREATE TABLE scenario (
 
 -- At most one committed scenario. Unique across the rows where status is
 -- 'committed', which is a partial unique index on both SQLite and PostgreSQL.
-CREATE UNIQUE INDEX scenario_one_committed
+CREATE UNIQUE INDEX IF NOT EXISTS scenario_one_committed
     ON scenario (status) WHERE status = 'committed';
 
-INSERT INTO scenario (scenario_id, name, created_at, status)
+INSERT OR IGNORE INTO scenario (scenario_id, name, created_at, status)
 VALUES (0, 'working', '1970-01-01', 'open');
 
 -- Closed vocabulary shared by all three fact tables. A new measure is a
 -- deliberate decision, not a string someone types at a call site.
-CREATE TABLE measure (
+CREATE TABLE IF NOT EXISTS measure (
     measure      TEXT PRIMARY KEY,
     grain        TEXT NOT NULL
                  CHECK (grain IN ('supply_demand', 'capacity', 'fleet')),
@@ -63,7 +63,7 @@ CREATE TABLE measure (
     description  TEXT NOT NULL
 );
 
-INSERT INTO measure (measure, grain, unit, derived, description) VALUES
+INSERT OR IGNORE INTO measure (measure, grain, unit, derived, description) VALUES
     ('demand_actual',         'supply_demand', 'qty',   0, 'Historical shipped or consumed quantity, from the system of record'),
     ('scheduled_receipt',     'supply_demand', 'qty',   0, 'Confirmed open PO or work order due in this bucket'),
     -- derived = 0 DELIBERATELY. A firm planned order is an INPUT authored by a
@@ -106,7 +106,7 @@ INSERT INTO measure (measure, grain, unit, derived, description) VALUES
     ('total_km',              'fleet',         'km',    1, 'All kilometres assigned to a truck in this bucket, long-haul or not'),
     ('trips_assigned',        'fleet',         'trips', 1, 'Trips assigned to a truck in this bucket; few long runs and many short ones are different working weeks');
 
-CREATE TABLE fact_supply_demand (
+CREATE TABLE IF NOT EXISTS fact_supply_demand (
     sku_id       INTEGER NOT NULL,
     loc_id       INTEGER NOT NULL,
     bucket_date  DATE    NOT NULL,
@@ -125,7 +125,7 @@ CREATE TABLE fact_supply_demand (
 -- `reason` is NOT NULL and must be non-empty. An override with no reason is
 -- indistinguishable in three weeks from a typo, and the person who has to work
 -- that out is usually the person who typed it.
-CREATE TABLE plan_override (
+CREATE TABLE IF NOT EXISTS plan_override (
     sku_id       INTEGER NOT NULL,
     loc_id       INTEGER NOT NULL,
     bucket_date  DATE    NOT NULL,
@@ -136,7 +136,7 @@ CREATE TABLE plan_override (
     PRIMARY KEY (sku_id, loc_id, bucket_date, scenario_id)
 );
 
-CREATE TABLE fact_capacity (
+CREATE TABLE IF NOT EXISTS fact_capacity (
     resource_id  INTEGER NOT NULL,
     bucket_date  DATE    NOT NULL,
     measure      TEXT    NOT NULL REFERENCES measure (measure),
@@ -147,7 +147,7 @@ CREATE TABLE fact_capacity (
 
 -- The fairness ledger's grain. Reserved with an empty measure set from item 2
 -- until item 9 defined what the ledger actually measures.
-CREATE TABLE fact_fleet (
+CREATE TABLE IF NOT EXISTS fact_fleet (
     truck_id     INTEGER NOT NULL,
     bucket_date  DATE    NOT NULL,
     measure      TEXT    NOT NULL REFERENCES measure (measure),
@@ -156,11 +156,90 @@ CREATE TABLE fact_fleet (
     PRIMARY KEY (truck_id, bucket_date, measure, scenario_id)
 );
 
+-- --------------------------------------------------------------------------
+-- Master data: what the facts are ABOUT.
+--
+-- **These tables did not exist, and their absence was the product's largest
+-- open defect.** Facts were persisted from the first release; lead times, lot
+-- sizes, the BOM, locations, resources and the working calendar were not. They
+-- lived on a per-process object set by exactly one method, so a planner could
+-- import a year of history, close the window, reopen it, and be told there was
+-- no dataset loaded while their demand rows sat in the file.
+--
+-- Deliberately NOT in the fact tables. A fact is a quantity at a
+-- (sku, loc, bucket, measure, scenario); a lead time is a property of a part
+-- and has no bucket. Putting it in a fact table would have forced a date on
+-- something that does not have one.
+-- --------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS location (
+    loc_id  INTEGER PRIMARY KEY,
+    name    TEXT NOT NULL,
+    kind    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS part (
+    sku_id         INTEGER PRIMARY KEY,
+    name           TEXT    NOT NULL,
+    level          TEXT    NOT NULL,
+    lead_time_days INTEGER NOT NULL,
+    safety_stock   NUMERIC NOT NULL,
+    lot_policy     TEXT    NOT NULL,
+    lot_qty        NUMERIC NOT NULL,
+    unit_cost      NUMERIC NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS bom (
+    parent_sku_id INTEGER NOT NULL REFERENCES part (sku_id),
+    child_sku_id  INTEGER NOT NULL REFERENCES part (sku_id),
+    qty_per       NUMERIC NOT NULL,
+    PRIMARY KEY (parent_sku_id, child_sku_id)
+);
+
+CREATE TABLE IF NOT EXISTS resource (
+    resource_id INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL,
+    kind        TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS routing (
+    sku_id         INTEGER NOT NULL REFERENCES part (sku_id),
+    resource_id    INTEGER NOT NULL REFERENCES resource (resource_id),
+    hours_per_unit NUMERIC NOT NULL,
+    setup_hours    NUMERIC NOT NULL,
+    PRIMARY KEY (sku_id, resource_id)
+);
+
+CREATE TABLE IF NOT EXISTS truck (
+    truck_id    INTEGER PRIMARY KEY,
+    plate       TEXT    NOT NULL,
+    capacity_kg NUMERIC NOT NULL,
+    available   INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS stock_on_hand (
+    sku_id INTEGER NOT NULL REFERENCES part (sku_id),
+    loc_id INTEGER NOT NULL REFERENCES location (loc_id),
+    qty    NUMERIC NOT NULL,
+    PRIMARY KEY (sku_id, loc_id)
+);
+
+-- One row, or none. The dates the plan runs between and the week the business
+-- works, which every seasonal period is derived from.
+CREATE TABLE IF NOT EXISTS dataset (
+    only_row         INTEGER PRIMARY KEY CHECK (only_row = 1),
+    history_start    TEXT NOT NULL,
+    history_end      TEXT NOT NULL,
+    horizon_start    TEXT NOT NULL,
+    horizon_end      TEXT NOT NULL,
+    working_weekdays TEXT NOT NULL
+);
+
 -- The planning grid reads one measure across many entities for a date window;
 -- the primary keys are entity-leading and cannot serve that scan.
-CREATE INDEX fact_supply_demand_by_bucket
+CREATE INDEX IF NOT EXISTS fact_supply_demand_by_bucket
     ON fact_supply_demand (scenario_id, measure, bucket_date);
-CREATE INDEX fact_capacity_by_bucket
+CREATE INDEX IF NOT EXISTS fact_capacity_by_bucket
     ON fact_capacity (scenario_id, measure, bucket_date);
-CREATE INDEX fact_fleet_by_bucket
+CREATE INDEX IF NOT EXISTS fact_fleet_by_bucket
     ON fact_fleet (scenario_id, measure, bucket_date);

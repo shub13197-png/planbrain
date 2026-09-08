@@ -136,6 +136,29 @@ def read_facts(
     ]
 
 
+def distinct_keys(con, table: str, *, scenario_id: int, measure: str) -> list:
+    """Every entity key that has at least one row of ``measure``.
+
+    **The keys have to come from the store, not from a process-local object.**
+    `forecast.demand_keys` read them off the in-memory dataset, which is fine
+    for a session that just built one and empty for a session that reopened a
+    file someone else's process wrote. That is the same defect as the part
+    master having nowhere to live, one layer down.
+
+    Sparse storage makes this exact rather than approximate: a key with no rows
+    has no demand, which is precisely the series that should not be forecast.
+    """
+    key_cols = _check_table(table)
+    _check_measure(con, table, measure)
+    return sorted(
+        tuple(row) for row in con.execute(
+            f"SELECT DISTINCT {', '.join(key_cols)} FROM {table} "
+            f"WHERE scenario_id = ? AND measure = ?",
+            (scenario_id, measure),
+        )
+    )
+
+
 def write_facts(
     con,
     table: str,

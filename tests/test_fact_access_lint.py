@@ -108,7 +108,10 @@ def test_registry_matches_the_schema():
     sql = (ROOT / "planbrain" / "facts" / "schema.sql").read_text()
     declared = {}
     for match in re.finditer(
-        r"CREATE TABLE (fact_\w+)\s*\((.*?)\n\);", sql, re.DOTALL
+        # `IF NOT EXISTS` is optional because the schema became re-appliable
+        # when it gained the master-data tables: an existing database has to
+        # be upgraded on open, not refused.
+        r"CREATE TABLE (?:IF NOT EXISTS )?(fact_\w+)\s*\((.*?)\n\);", sql, re.DOTALL
     ):
         body = match.group(2)
         cols = [
