@@ -42,17 +42,35 @@ revisited.
 Read that file rather than quoting a single number from it. Any policy can buy
 any fill rate with enough stock, so the comparison is a curve.
 
-## Blocked, not merely open
+## Cleared, and what it unblocked
 
-**GitHub Actions will not start any job on this account.**
+**GitHub Actions was refusing to start any job on this account.** From 09:28 on
+6 September every run failed in two to seven seconds with *zero steps executed*
+-- which looks exactly like four platforms failing at once and was not that:
 
 > The job was not started because recent account payments have failed or your
 > spending limit needs to be increased.
 
-The `ci` run at 09:07 on 6 September passed; everything from 09:28 is refused
-before a step runs — which looks exactly like four platforms failing at once and
-is not that. **Nothing merges to a verified state until this is cleared**, and
-item 1 below depends on it.
+**Making the repository public cleared it**, because public repositories get
+Actions minutes for free. Re-running the same commit that had "failed" produced:
+
+| workflow | before | after |
+|---|---|---|
+| `ci` / test | 0 steps, refused | **success, 10 steps** |
+| `ci` / offline | 0 steps, refused | **success, 8 steps** |
+| `package` / sidecar, Windows + both macOS | 0 steps, refused | **success, 13 steps each** |
+| `package` / offline-artifact | 0 steps, refused | **success, 11 steps** |
+
+So the suite is now verified somewhere other than the machine that wrote it,
+for the first time, and **the packaging path has completed a green run** -- the
+thing item 2 below had been waiting on. The failure emails that arrive from the
+old runs are about those refused runs, not about anything broken; GitHub keeps
+their red marks until something re-runs them.
+
+**A stale blocker at the top of this file is worse than no blocker**, because it
+excuses everything underneath it. This section is kept rather than deleted so
+the next person recognises the shape if it recurs: refused jobs report as
+failures, and the give-away is the step count, not the message.
 
 ## Open, in the order it matters
 
@@ -60,21 +78,23 @@ item 1 below depends on it.
    verified.** `withGlobalTauri` was absent from `tauri.conf.json`, so
    `window.__TAURI__` did not exist and the frontend threw on its first line —
    **every button in the window dead, on every launch, from the first one.**
-   Fixed and asserted in `tests/test_desktop_shell.py`; it needs one CI release
-   build, a download, an install, and a click to confirm. Blocked on the billing
-   item above.
+   Fixed and asserted in `tests/test_desktop_shell.py`; it needs one release
+   build, a download, an install, and a click to confirm. **No longer blocked** —
+   Actions runs now, so this is reachable by triggering `release.yml` and
+   actually pressing a button in the result.
 
    **The 2026-09-04 diagnosis of that screen was wrong and was published as
    fact**; retracted in `docs/decisions.md`. The race it described is real, is
    fixed, and was not what anyone was looking at.
 
-2. **Three Windows builds were lost to shell details**, each costing a full
-   four-platform run: a `"//"` key Tauri's strict config schema rejects,
-   PowerShell stripping the quotes out of an inline `--config` JSON, and word
-   splitting on the space in `Planning Brain_0.1.0_…`. All three are fixed and
-   the last was verified locally against files with spaces. The two-installer
-   path has therefore **never completed a green run** — that is what the next
-   release build settles, along with item 1.
+2. **The two-installer path has still never completed a green run**, though it
+   is now much closer. Three Windows builds were lost to shell details: a `"//"`
+   key Tauri's strict config schema rejects, PowerShell stripping the quotes out
+   of an inline `--config` JSON, and word splitting on the space in
+   `Planning Brain_0.1.0_…`. All three are fixed. **`package` is now green on
+   all four platforms**, which proves the sidecar builds everywhere — but
+   `package` does not bundle the installers. `release.yml` does, and it has not
+   run since Actions came back.
 
 3. **The Linux AppImage fails the size gate at 161.5 MB against 150**, and is
    left failing on purpose. There is no bloat — the sidecar is accounted for to
